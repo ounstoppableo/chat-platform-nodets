@@ -1,17 +1,20 @@
 /**
  * Setup express server.
  */
+import {app} from '@src/upgradeToWs';
+
 
 import cookieParser from 'cookie-parser';
 import morgan from 'morgan';
 import path from 'path';
 import helmet from 'helmet';
 import express, { Request, Response, NextFunction } from 'express';
+
 import logger from 'jet-logger';
 
 import 'express-async-errors';
 
-import BaseRouter from '@src/routes/chatApi';
+import chatRouter from '@src/routes/chatApi';
 import Paths from '@src/constants/Paths';
 
 import EnvVars from '@src/constants/EnvVars';
@@ -19,14 +22,7 @@ import HttpStatusCodes from '@src/constants/HttpStatusCodes';
 
 import { NodeEnvs } from '@src/constants/misc';
 import { RouteError } from '@src/other/classes';
-
-
-// **** Variables **** //
-
-const app = express();
-
-
-// **** Setup **** //
+import userRouter from '@src/routes/userApi';
 
 // Basic middleware
 app.use(express.json());
@@ -44,7 +40,8 @@ if (EnvVars.NodeEnv === NodeEnvs.Production.valueOf()) {
 }
 
 // Add APIs, must be after middleware
-app.use(Paths.Base, BaseRouter);
+app.use(Paths.Base, chatRouter);
+app.use(Paths.User, userRouter);
 
 // Add error handler
 app.use((
@@ -75,7 +72,8 @@ app.use((
 const staticDir = path.join(__dirname, 'public');
 app.use(express.static(staticDir));
 
-
 // **** Export default **** //
 
-export default app;
+// export default app;
+
+export {default as httpsServer} from './upgradeToWs';

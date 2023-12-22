@@ -5,7 +5,9 @@
 
 export default {
   Base: '/',
+  User: '/user',
   Chat: {
     Base: '/chat',
   },
+
 } as const;
