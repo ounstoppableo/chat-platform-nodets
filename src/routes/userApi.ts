@@ -4,10 +4,12 @@ import pool from '@src/mysql/pool';
 import path, { resolve } from 'path';
 import fs from 'fs';
 import jwt from 'jsonwebtoken';
-import { RegisterInfo } from './types/userApi/userApi';
+import { Group, RegisterInfo, UserInfo } from './types/userApi/userApi';
 import IP2Region  from 'ip2region';
+import { codeMapMsg, resCode } from './types/types';
 
 
+const privateKey = fs.readFileSync(path.resolve(__dirname,'../../key/tokenKey.key'));
 // **** Variables **** //
 
 const userRouter = Router();
@@ -110,6 +112,90 @@ userRouter.post('/userLogin',(req,res)=>{
   }).catch((err)=>{
     res.json({code:401,msg:err});
   });
+});
+
+userRouter.get('/userConfirm',(req,res)=>{
+  const token = req.headers.authorization;
+  const resData = {} as UserInfo;
+  const initResData = (resData:any)=>{
+    resData.avatar = '';
+    resData.isLogin = false;
+    resData.uid = '';
+    resData.username = '';
+  };
+  if(token){
+    new Promise((res,rej)=>{
+      jwt.verify(token,privateKey,(err:any, decoded:any)=>{
+        if(err){
+          console.log(err);
+          return rej(resCode.tokenErr);
+        }
+        const {username} = decoded;
+        resData.username = username;
+        pool.query('select avatar,uid from users where users.username = ? ',[username],(err,data)=>{
+          if(err) {
+            console.log(err);
+            return rej(resCode.serverErr);
+          }
+          resData.avatar = data[0].avatar;
+          resData.uid = data[0].uid;
+          pool.query('select groupId from groupRelationship where username = ? ',[username],(err,data)=>{
+            if(err) {
+              console.log(err);
+              return rej(resCode.serverErr);
+            }
+            const promises = [] as Promise<any>[];
+            const groups = [] as Group[]; 
+            data.forEach((item:string)=>{
+              promises.push(new Promise((res,rej)=>{
+                pool.query('select * from groups where groupId=?',[item],(err,data)=>{
+                  if(err) {
+                    console.log(err);
+                    return rej(resCode.serverErr);
+                  }
+                  groups.push(data[0]);
+                  res(data[0]);
+                });
+              }));
+            });
+            Promise.all(promises).then(()=>{
+              resData.groups = groups;
+              pool.query('update users set isOnline=1 where username = ?',[username],(err,data)=>{
+                if(err) {
+                  console.log(err);
+                  return rej(resCode.serverErr);
+                }
+                resData.isLogin = true;
+                res(resData);
+              });
+            },(err)=>rej(err));
+          });
+        });
+      });
+    }).then((data)=>{
+      res.json({code: resCode.success,data,msg:codeMapMsg[resCode.success]});
+    },(err)=>{
+      initResData(resData);
+      pool.query('select * from groups where groupId=1',(err2,data)=>{
+        if(err2) {
+          console.log(err2);
+          return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
+        }
+        resData.groups = data;
+        res.json({code:err,data:resData,msg:codeMapMsg[err]});
+      });
+    });
+  }else {
+    initResData(resData);
+    pool.query('select * from groups where groupId=1',(err,data)=>{
+      if(err) {
+        console.log(err);
+        return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
+      }
+      resData.groups = data;
+      res.json({code: resCode.success,data:resData,msg: codeMapMsg[resCode.success]});
+    });
+  }
 });
 
 

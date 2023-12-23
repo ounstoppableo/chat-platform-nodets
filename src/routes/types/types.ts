@@ -20,3 +20,15 @@ export interface IRes extends e.Response {
     sessionUser: ISessionUser;
   };
 }
+
+export enum resCode {
+  tokenErr = 403,
+  success = 200,
+  serverErr = 500,
+}
+
+export enum codeMapMsg {
+  'token失效' = 403,
+  '请求成功' = 200,
+  '服务器错误' = 500
+}
