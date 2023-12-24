@@ -7,6 +7,7 @@ import jwt from 'jsonwebtoken';
 import { Group, RegisterInfo, UserInfo } from './types/userApi/userApi';
 import IP2Region  from 'ip2region';
 import { codeMapMsg, resCode } from './types/types';
+import redisClient from '@src/redis/connect';
 
 
 const privateKey = fs.readFileSync(path.resolve(__dirname,'../../key/tokenKey.key'));

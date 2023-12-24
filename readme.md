@@ -6,7 +6,7 @@
 
 于是我就思考，是不是应该给这个项目加点料，考虑到聊天室的实时性、可拓展性，只用mysql作为数据存储的工具显然是不够的，于是我考虑使用redis+mysql进行数据存储；考虑到之前没有注重类型控制，于是在这次我想把ts集成到node中。
 
-总的来说，基本的框架就是：websocket+redis+mysql+typescript
+总的来说，基本的框架就是：socket.io(底层是websocket,这是封装好的库)+redis+mysql+typescript
 
 ### 项目搭建
 
@@ -20,34 +20,32 @@ npm install -g express-generator-typescript
 npx express-generator-typescript "chat-platform-nodets"
 ~~~
 
-#### https升级&websocket升级
+#### https升级&socket.io安装
+
+升级websocket其实
 
 ~~~sh
-npm install https express-ws
+npm install https socket.io
 ~~~
 
 ~~~ts
-//upgradeToWs.ts
+//upgradeServer.ts
 import express from 'express';
-import expressWs from 'express-ws';
 import fs from 'fs';
 import path from 'path';
 import https from 'https';
+import {Server } from 'socket.io';
 
 const app:any = express();
 
-//进行https升级
+//https升级
 const httpsServer = https.createServer({
   key: fs.readFileSync(path.resolve(__dirname,'../cert/server.key')),
   cert: fs.readFileSync(path.resolve(__dirname,'../cert/server.crt')),
 }, app);
+const io = new Server(httpsServer);
 
-//ws升级
-expressWs(app,httpsServer);
-
-//暴露出app，以便添加路由/中间件
-//由于js是引用数据类型，所以即使在添加中间件之前进行https升级，最后的路由也能绑定在服务器上
-export {app};
+export {app,io};
 export default httpsServer;
 ~~~
 
@@ -68,7 +66,7 @@ import logger from 'jet-logger';
 
 import 'express-async-errors';
 
-import chatRouter from '@src/routes/chatApi';
+import '@src/routes/chatApi';
 import Paths from '@src/constants/Paths';
 
 import EnvVars from '@src/constants/EnvVars';

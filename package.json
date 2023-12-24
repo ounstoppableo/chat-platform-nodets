@@ -49,6 +49,8 @@
     "morgan": "^1.10.0",
     "mysql": "^2.18.1",
     "openssl": "^2.0.0",
+    "redis": "^4.6.12",
+    "socket.io": "^4.7.2",
     "ts-command-line-args": "^2.5.1",
     "ws": "^8.15.1"
   },

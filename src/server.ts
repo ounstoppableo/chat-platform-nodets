@@ -1,7 +1,7 @@
 /**
  * Setup express server.
  */
-import {app} from '@src/upgradeToWs';
+import {app} from '@src/upgradeServer';
 
 
 import cookieParser from 'cookie-parser';
@@ -14,7 +14,7 @@ import logger from 'jet-logger';
 
 import 'express-async-errors';
 
-import chatRouter from '@src/routes/chatApi';
+import '@src/routes/chatApi';
 import Paths from '@src/constants/Paths';
 
 import EnvVars from '@src/constants/EnvVars';
@@ -40,7 +40,6 @@ if (EnvVars.NodeEnv === NodeEnvs.Production.valueOf()) {
 }
 
 // Add APIs, must be after middleware
-app.use(Paths.Base, chatRouter);
 app.use(Paths.User, userRouter);
 
 // Add error handler
@@ -76,4 +75,4 @@ app.use(express.static(staticDir));
 
 // export default app;
 
-export {default as httpsServer} from './upgradeToWs';
+export {default as httpsServer} from './upgradeServer';
