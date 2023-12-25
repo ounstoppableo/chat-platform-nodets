@@ -1,13 +1,14 @@
 export interface ServerToClientEvents  {
     someoneStatusChange: (param:{username:string,isOnline:boolean})=>void,
-    toRoomClient:(msg:ServerToUserMsg)=>void
+    toRoomClient:(msg:ServerToUserMsg)=>void;
 }
 export interface ClientToServerEvents  {
     joinRoom: (groupIds: string[])=>void,
     msgToServer: (msg: userToServerMsg)=>void
 }
 export interface InterServerEvents  {
-    disconnect: ()=>void
+    disconnect: ()=>void;
+    error: (err:any) => void;
 }
 export interface SocketData {
     username:string,

@@ -26,6 +26,9 @@ io.use((socket, next) => {
     return next();
   }
 });
+io.on('error',(err)=>{
+  console.log(err);
+});
 
 io.on('connection',(socket)=>{
   //更新登录状态
