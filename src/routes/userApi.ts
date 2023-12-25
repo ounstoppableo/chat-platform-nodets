@@ -6,7 +6,7 @@ import fs from 'fs';
 import jwt from 'jsonwebtoken';
 import { Group, RegisterInfo, UserInfo } from './types/userApi/userApi';
 import IP2Region  from 'ip2region';
-import { codeMapMsg, resCode } from './types/types';
+import { Res, codeMapMsg, resCode } from './types/types';
 import redisClient from '@src/redis/connect';
 
 
@@ -15,7 +15,13 @@ const privateKey = fs.readFileSync(path.resolve(__dirname,'../../key/tokenKey.ke
 
 const userRouter = Router();
 
+/*
+  初步设想是先进行redis的插入/查询再进行mysql的插入/查询
+  但是要保证数据一致性又是一个问题
+  该怎么做呢？？
+*/
 
+//用户登录逻辑，第一次登录自动注册
 userRouter.post('/userLogin',(req,res)=>{
   const ip =req.headers['x-forwarded-for'];
   const avatarPath = path.resolve(__dirname,'../public/avatar/');
@@ -115,6 +121,7 @@ userRouter.post('/userLogin',(req,res)=>{
   });
 });
 
+//用户token校验，返回用户信息
 userRouter.get('/userConfirm',(req,res)=>{
   const token = req.headers.authorization;
   const resData = {} as UserInfo;
@@ -147,9 +154,9 @@ userRouter.get('/userConfirm',(req,res)=>{
             }
             const promises = [] as Promise<any>[];
             const groups = [] as Group[]; 
-            data.forEach((item:string)=>{
+            data.forEach((item:any)=>{
               promises.push(new Promise((res,rej)=>{
-                pool.query('select * from groups where groupId=?',[item],(err,data)=>{
+                pool.query('select * from groups where groupId=?',[item.groupId],(err,data)=>{
                   if(err) {
                     console.log(err);
                     return rej(resCode.serverErr);
@@ -196,6 +203,46 @@ userRouter.get('/userConfirm',(req,res)=>{
       resData.groups = data;
       res.json({code: resCode.success,data:resData,msg: codeMapMsg[resCode.success]});
     });
+  }
+});
+
+//查询组成员
+//是否需要token校验？
+userRouter.get('/groupMembers/:groupId',(req,res)=>{
+  const groupMembers = [] as any;
+  const groupId = req.params.groupId;
+  if(groupId){
+    new Promise((res,rej)=>{
+      pool.query('select username from groupRelationship where groupId = ?',[groupId],(err,data)=>{
+        if(err) {
+          console.log(err);
+          return rej(resCode.serverErr);
+        }
+        const usernames = data;
+        const promises:Promise<any>[] = usernames.map((item:any)=>new Promise((res,rej)=>{
+          pool.query('select username,avatar,uid,isOnline from users where username=?',[item.username],(err,data)=>{
+            if(err){
+              console.log(err);
+              return rej(resCode.serverErr);
+            }
+            groupMembers.push(data[0]);
+            res(1);
+          });
+        }),
+        );
+        Promise.all(promises).then(()=>{
+          res(groupMembers);
+        },(err)=>{
+          rej(err);
+        });
+      });
+    }).then((data)=>{
+      res.json({code: resCode.success,data:data,msg:codeMapMsg[resCode.success]});
+    },(err)=>{
+      res.json({code: err,data:groupMembers,msg:codeMapMsg[err]});
+    });
+  }else {
+    res.json({code: resCode.paramsErr,data:groupMembers,msg:codeMapMsg[resCode.paramsErr]});
   }
 });
 

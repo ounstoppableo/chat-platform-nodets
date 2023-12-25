@@ -3,6 +3,7 @@ import redisClient from '@src/redis/connect';
 import path from 'path';
 import jwt from 'jsonwebtoken';
 import fs from 'fs';
+import pool from '@src/mysql/pool';
 
 const privateKey = fs.readFileSync(path.resolve(__dirname,'../../key/tokenKey.key'));
 
@@ -26,19 +27,39 @@ io.use((socket, next) => {
   }
 });
 
-//处理错误
-io.on('error',(err)=>{
-  console.log(err);
-});
-
 io.on('connection',(socket)=>{
-  const generalGroup = '1';
-  socket.on('joinRoom',(msg)=>{
-    msg.forEach((item:any)=>{
-      if(item.groupId===generalGroup) socket.join(generalGroup);
+  //更新登录状态
+  if(socket.data.username) {
+    pool.query('update users set isOnline = ? where username = ?',[1,socket.data.username],(err,data)=>{
+      if(err) {
+        return console.log(err);
+      }
+      io.emit('someoneStatusChange',{username:socket.data.username,isOnline:true});
     });
+  }
+  //加入群聊
+  socket.on('joinRoom',(groupIds)=>{
+    if(!!groupIds.length){
+      groupIds.forEach((item:any)=>{
+        socket.data.groups?socket.data.groups.push(item.groupId):socket.data.groups=[item.groupId];
+        socket.join(item.groupId);
+      });
+    }
   });
+  //接收客户端的消息
   socket.on('msgToServer',(msg)=>{
     io.to(msg.room).emit('toRoomClient',Object.assign({username:socket.data.username},msg));
+  });
+
+  //离开
+  socket.on('disconnect',(msg)=>{
+    if(socket.data.username) {
+      pool.query('update users set isOnline = ? where username = ?',[0,socket.data.username],(err,data)=>{
+        if(err) {
+          return console.log(err);
+        }
+        io.emit('someoneStatusChange',{username:socket.data.username,isOnline:false});
+      });
+    }
   });
 });
