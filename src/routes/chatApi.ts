@@ -4,6 +4,7 @@ import path from 'path';
 import jwt from 'jsonwebtoken';
 import fs from 'fs';
 import pool from '@src/mysql/pool';
+import dayjs from 'dayjs';
 
 const privateKey = fs.readFileSync(path.resolve(__dirname,'../../key/tokenKey.key'));
 
@@ -51,7 +52,13 @@ io.on('connection',(socket)=>{
   });
   //接收客户端的消息
   socket.on('msgToServer',(msg)=>{
-    io.to(msg.room).emit('toRoomClient',Object.assign({username:socket.data.username},msg));
+    pool.query('insert gmessage set username=?,time=?,text=?,timestamp=?,likes=?,dislikes=?,groupId=?',[socket.data.username,dayjs(msg.time).format('YYYY-MM-DD HH:mm:ss'),msg.msg,dayjs(msg.time).unix(),0,0,msg.room],(err,data)=>{
+      if(err) {
+        return  console.log(err);
+      }
+      io.to(msg.room).emit('toRoomClient',Object.assign({username:socket.data.username},msg));
+    });
+
   });
 
   //离开

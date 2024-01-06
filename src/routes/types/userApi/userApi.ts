@@ -25,3 +25,4 @@ export interface Group{
     lastMsg: string,
     date: Date
 }
+

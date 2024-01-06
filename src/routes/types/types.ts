@@ -35,8 +35,8 @@ export enum codeMapMsg {
   '参数错误' = 404
 }
 
-export interface Res {
+export interface Res<T> {
   code: number,
-  data: any,
+  data: T,
   msg:string
 }

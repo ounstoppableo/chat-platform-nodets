@@ -8,6 +8,7 @@ import { Group, RegisterInfo, UserInfo } from './types/userApi/userApi';
 import IP2Region  from 'ip2region';
 import { Res, codeMapMsg, resCode } from './types/types';
 import redisClient from '@src/redis/connect';
+import { ServerToUserMsg, TotalMsg, userToServerMsg } from './types/chatApi/chatApi';
 
 
 const privateKey = fs.readFileSync(path.resolve(__dirname,'../../key/tokenKey.key'));
@@ -20,6 +21,7 @@ const userRouter = Router();
   但是要保证数据一致性又是一个问题
   该怎么做呢？？
 */
+
 
 //用户登录逻辑，第一次登录自动注册
 userRouter.post('/userLogin',(req,res)=>{
@@ -122,7 +124,7 @@ userRouter.post('/userLogin',(req,res)=>{
 });
 
 //用户token校验，返回用户信息
-userRouter.get('/userConfirm',(req,res)=>{
+userRouter.get('/userConfirm',(req,res:{json:(param:Res<any>)=>void})=>{
   const token = req.headers.authorization;
   const resData = {} as UserInfo;
   const initResData = (resData:any)=>{
@@ -208,7 +210,7 @@ userRouter.get('/userConfirm',(req,res)=>{
 
 //查询组成员
 //是否需要token校验？
-userRouter.get('/groupMembers/:groupId',(req,res)=>{
+userRouter.get('/groupMembers/:groupId',(req,res:{json:(param:Res<any>)=>void})=>{
   const groupMembers = [] as any;
   const groupId = req.params.groupId;
   if(groupId){
@@ -246,6 +248,134 @@ userRouter.get('/groupMembers/:groupId',(req,res)=>{
   }
 });
 
+
+//获取群消息
+userRouter.get('/groupMsg/:groupId',(req,res:{json:(param:Res<ServerToUserMsg[]>)=>void})=>{
+  const groupId = req.params.groupId;
+  const resData:ServerToUserMsg[] = [];
+  new Promise((res,rej)=>{
+    pool.query('select * from gmessage where groupId = ?',[groupId],(err,data)=>{
+      if(err){
+        console.log(err);
+        return rej(resCode.serverErr);
+      }
+      const promises = data.map((item:any,index:number)=>{
+        return new Promise((res,rej)=>{
+          pool.query('select avatar from users where username = ?',[item.username],(err,data)=>{
+            if(err) {
+              console.log(err);
+              return rej(resCode.serverErr);
+            }
+            res(data[0] as string);
+          });
+        }).then((avatar:any)=>{
+          const temp = {
+            id:item.id,avatar:avatar.avatar,username:item.username,room:item.groupId,msg:item.text,time:item.time,timestamp:item.timestamp,likes:item.likes,dislikes:item.dislikes,
+          };
+          resData[index] = temp;
+        });
+      });
+      Promise.all(promises).then(()=>{
+        res(1);
+      },(err)=>{
+        return rej(err);
+      });
+    });
+  }).then(()=>{
+    console.log(resData);
+    res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
+  },(err)=>{
+    res.json({code:err,data:resData,msg:codeMapMsg[err]});
+  });
+});
+
+//获取用户加入的所有群的消息
+userRouter.get('/totalMsg/:username?',(req,res:{json:(param:Res<TotalMsg>)=>void})=>{
+  const username = req.params.username;
+  const resData:TotalMsg =  {} as TotalMsg;
+  if(username){
+    new Promise((res,rej)=>{
+      pool.query('select * from groupRelationship where username = ?',[username],(err,data)=>{
+        if(err) {
+          console.log(err);
+          return rej(err);
+        }
+        const promises = data.map((item:{ groupId: string, username: string })=>{
+          return new Promise((res2,rej2)=>{
+            pool.query('select * from gmessage where groupId = ?',[item.groupId],(err,data)=>{
+              if(err) {
+                console.log(err);
+                return rej2(err);
+              }
+              resData[item.groupId] = data.map((item2:any)=>({
+                id:item2.id,username:item2.username,room:item2.groupId,msg:item2.text,time:item2.time,timestamp:item2.timestamp,likes:item2.likes,dislikes:item2.dislikes,
+              }));
+              const promises2 = resData[item.groupId].map((item3:any,index:number)=>{
+                return new Promise((res3,rej3)=>{
+                  pool.query('select avatar from users where username = ?',[item3.username],(err,avatar)=>{
+                    if(err) {
+                      console.log(err);
+                      return rej3(err);
+                    }
+                    resData[item.groupId][index].avatar  = avatar[0].avatar;
+                    res3(1);
+                  });
+                });
+              });
+              Promise.all(promises2).then(()=>{
+                res2(1);
+              },(err)=>{
+                rej2(err);
+              });
+            });
+          });
+        });
+        Promise.all(promises).then(()=>{
+          res(1);
+        },(err)=>{
+          rej(err);
+        });
+      });
+    }).then(()=>{
+      res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
+    },(err)=>{  
+      res.json({code:err,data:resData,msg:codeMapMsg[err]});
+    });
+  }else {
+    new Promise((res,rej)=>{
+      pool.query('select * from gmessage where groupId = 1',(err,data)=>{
+        if(err) {
+          console.log(err);
+          return rej(err);
+        }
+        resData['1'] = data.map((item:any)=>({
+          id:item.id,username:item.username,room:item.groupId,msg:item.text,time:item.time,timestamp:item.timestamp,likes:item.likes,dislikes:item.dislikes,
+        }));
+        const promises = resData['1'].map((item2:any,index:number)=>{
+          return new Promise((res2,rej2)=>{
+            pool.query('select avatar from users where username = ?',[item2.username],(err,avatar)=>{
+              if(err) {
+                console.log(err);
+                return rej2(err);
+              }
+              resData['1'][index].avatar  = avatar[0].avatar;
+              res2(1);
+            });
+          });
+        });
+        Promise.all(promises).then(()=>{
+          res(1);
+        },(err)=>{
+          rej(err);
+        });
+      });
+    }).then(()=>{
+      res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
+    },(err)=>{  
+      res.json({code:err,data:resData,msg:codeMapMsg[err]});
+    });
+  }
+});
 
 // **** Export default **** //
 

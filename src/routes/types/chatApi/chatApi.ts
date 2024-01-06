@@ -15,8 +15,11 @@ export interface SocketData {
     groups: any[]
 }
 export type userToServerMsg = {
-    avatar:string,room:string,msg:string,time:Date
+    avatar:string,room:string,msg:string,time:Date,timestamp:number,likes:number,dislikes:number,id:number
 }
 export type ServerToUserMsg = userToServerMsg & {
     username:string
+}
+export type TotalMsg = {
+    [key: string]: ServerToUserMsg[];
 }
