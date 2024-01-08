@@ -52,13 +52,82 @@ io.on('connection',(socket)=>{
   });
   //接收客户端的消息
   socket.on('msgToServer',(msg)=>{
-    pool.query('insert gmessage set username=?,time=?,text=?,timestamp=?,likes=?,dislikes=?,groupId=?',[socket.data.username,dayjs(msg.time).format('YYYY-MM-DD HH:mm:ss'),msg.msg,dayjs(msg.time).unix(),0,0,msg.room],(err,data)=>{
+    pool.getConnection((err,connection)=>{
       if(err) {
         return  console.log(err);
       }
-      io.to(msg.room).emit('toRoomClient',Object.assign({username:socket.data.username},msg));
+      connection.beginTransaction((err)=>{
+        if(err) {
+          connection.release();
+          return  console.log(err);
+        }
+        connection.query('insert gmessage set username=?,time=?,text=?,timestamp=?,likes=?,dislikes=?,groupId=?',[socket.data.username,dayjs(msg.time).format('YYYY-MM-DD HH:mm:ss'),msg.msg,dayjs(msg.time).unix(),0,0,msg.room],(err,data)=>{
+          if(err) {
+            return  connection.rollback(() => {
+              connection.release(); // 释放连接回连接池
+              console.log(err);
+            });
+          }
+          connection.query('update groups set lastMsg = ?,date = ?,lastMsgUser = ? where groupId=?',[msg.msg,dayjs(msg.time).format('YYYY-MM-DD HH:mm:ss'),socket.data.username,msg.room],(err)=>{
+            if(err) {
+              return  connection.rollback(() => {
+                connection.release(); // 释放连接回连接池
+                console.log(err);
+              });
+            }
+            connection.commit((commitError)=>{
+              if (commitError) {
+                return connection.rollback(() => {
+                  connection.release(); // 释放连接回连接池
+                  console.error('Error committing transaction:', commitError);
+                });
+              }
+              // 释放连接回连接池
+              connection.release();
+              io.to(msg.room).emit('toRoomClient',Object.assign({username:socket.data.username,id:data.insertId,likes:0,dislikes:0},msg));
+            });
+          });
+        });
+      });
     });
 
+  });
+  //喜欢某消息
+  socket.on('likeSbMsg',(msg)=>{
+    pool.query('update gmessage set likes = ? where id=?',[msg.likes+1,msg.msgId],(err,data)=>{
+      if(err) {
+        return  console.log(err);
+      }
+      io.to(msg.room).emit('sbLikeMsg',{success:true,likes:msg.likes+1,msgId:msg.msgId,room:msg.room,type:'like'});
+    });
+  });
+  //取消点赞
+  socket.on('cancelLikeSbMsg',(msg)=>{
+    pool.query('update gmessage set likes = ? where id=?',[msg.likes-1,msg.msgId],(err,data)=>{
+      if(err) {
+        return  console.log(err);
+      }
+      io.to(msg.room).emit('cancelSbLikeMsg',{success:true,likes:msg.likes-1,msgId:msg.msgId,room:msg.room,type:'cancelLike'});
+    });
+  });
+
+  //不喜欢某消息
+  socket.on('dislikeSbMsg',(msg)=>{
+    pool.query('update gmessage set dislikes = ? where id=?',[msg.dislikes+1,msg.msgId],(err,data)=>{
+      if(err) {
+        return  console.log(err);
+      }
+      io.to(msg.room).emit('sbDislikeMsg',{success:true,dislikes:msg.dislikes+1,msgId:msg.msgId,room:msg.room});
+    });
+  });
+  //取消不喜欢
+  socket.on('cancelDislikeSbMsg',(msg)=>{
+    pool.query('update gmessage set dislikes = ? where id=?',[msg.dislikes-1,msg.msgId],(err,data)=>{
+      if(err) {
+        return  console.log(err);
+      }
+      io.to(msg.room).emit('cancelSbDislikeMsg',{success:true,dislikes:msg.dislikes-1,msgId:msg.msgId,room:msg.room});
+    });
   });
 
   //离开
