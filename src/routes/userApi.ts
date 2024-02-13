@@ -293,54 +293,65 @@ userRouter.get('/groupMsg/:groupId',(req,res:{json:(param:Res<ServerToUserMsg[]>
 userRouter.get('/totalMsg/:username?',(req,res:{json:(param:Res<TotalMsg>)=>void})=>{
   const username = req.params.username;
   const resData:TotalMsg =  {} as TotalMsg;
+  const token = req.headers.authorization;
   if(username){
-    new Promise((res,rej)=>{
-      pool.query('select * from groupRelationship where username = ?',[username],(err,data)=>{
+    if(token){
+      jwt.verify(token,privateKey,(err:any, decoded:any)=>{
         if(err) {
-          console.log(err);
-          return rej(err);
+          return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
         }
-        const promises = data.map((item:{ groupId: string, username: string })=>{
-          return new Promise((res2,rej2)=>{
-            pool.query('select * from gmessage where groupId = ?',[item.groupId],(err,data)=>{
-              if(err) {
-                console.log(err);
-                return rej2(err);
-              }
-              resData[item.groupId] = data.map((item2:any)=>({
-                id:item2.id,username:item2.username,room:item2.groupId,msg:item2.text,time:item2.time,timestamp:item2.timestamp,likes:item2.likes,dislikes:item2.dislikes,
-              }));
-              const promises2 = resData[item.groupId].map((item3:any,index:number)=>{
-                return new Promise((res3,rej3)=>{
-                  pool.query('select avatar from users where username = ?',[item3.username],(err,avatar)=>{
-                    if(err) {
-                      console.log(err);
-                      return rej3(err);
-                    }
-                    resData[item.groupId][index].avatar  = avatar[0].avatar;
-                    res3(1);
+        if(decoded.username!==username) return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+        new Promise((res,rej)=>{
+          pool.query('select * from groupRelationship where username = ?',[username],(err,data)=>{
+            if(err) {
+              console.log(err);
+              return rej(resCode['serverErr']);
+            }
+            const promises = data.map((item:{ groupId: string, username: string })=>{
+              return new Promise((res2,rej2)=>{
+                pool.query('select * from gmessage where groupId = ?',[item.groupId],(err,data)=>{
+                  if(err) {
+                    console.log(err);
+                    return rej2(resCode['serverErr']);
+                  }
+                  resData[item.groupId] = data.map((item2:any)=>({
+                    id:item2.id,username:item2.username,room:item2.groupId,msg:item2.text,time:item2.time,timestamp:item2.timestamp,likes:item2.likes,dislikes:item2.dislikes,
+                  }));
+                  const promises2 = resData[item.groupId].map((item3:any,index:number)=>{
+                    return new Promise((res3,rej3)=>{
+                      pool.query('select avatar from users where username = ?',[item3.username],(err,avatar)=>{
+                        if(err) {
+                          console.log(err);
+                          return rej3(resCode['serverErr']);
+                        }
+                        resData[item.groupId][index].avatar  = avatar[0].avatar;
+                        res3(1);
+                      });
+                    });
+                  });
+                  Promise.all(promises2).then(()=>{
+                    res2(1);
+                  },(err)=>{
+                    rej2(err);
                   });
                 });
               });
-              Promise.all(promises2).then(()=>{
-                res2(1);
-              },(err)=>{
-                rej2(err);
-              });
+            });
+            Promise.all(promises).then(()=>{
+              res(1);
+            },(err)=>{
+              rej(err);
             });
           });
-        });
-        Promise.all(promises).then(()=>{
-          res(1);
-        },(err)=>{
-          rej(err);
+        }).then(()=>{
+          res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
+        },(err)=>{  
+          res.json({code:err,data:resData,msg:codeMapMsg[err]});
         });
       });
-    }).then(()=>{
-      res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
-    },(err)=>{  
-      res.json({code:err,data:resData,msg:codeMapMsg[err]});
-    });
+    }else {
+      return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+    }
   }else {
     new Promise((res,rej)=>{
       pool.query('select * from gmessage where groupId = 1',(err,data)=>{
@@ -376,6 +387,233 @@ userRouter.get('/totalMsg/:username?',(req,res:{json:(param:Res<TotalMsg>)=>void
     });
   }
 });
+
+
+//添加好友
+userRouter.post('/addFriend',(req,res:{json:(param:Res<any>)=>void})=>{
+  const {username:targetUsername} = req.body;
+  const resData:any =  {} as any;
+  const token = req.headers.authorization;
+  if(token){
+    jwt.verify(token,privateKey,(err:any, decoded:any)=>{
+      if(err) {
+        return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+      }
+      const {username} = decoded;
+      pool.query('select * from systemMsg where fromName=? and toName=? and type=\'addFriend\' or fromName=? and toName=? and type=\'addFriend\'',[username,targetUsername,targetUsername,username],(err,data)=>{
+        if(err) {
+          console.log(err);
+          return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
+        }
+        if(data.length!==0){
+          if(data[0].done==='success'){
+            resData.type = 1;
+            resData.msg = '你们已经是好友！';
+            return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
+          }else if(data[0].done==='padding'){
+            resData.type = 0;
+            if(data[0].fromName===username){
+              resData.msg = '对方已经发送好友请求，请在系统消息内确认！';
+            }else {
+              resData.msg = '正在等待确认！请不要多次请求';
+            }
+            return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
+          }
+        }
+        pool.query('INSERT INTO systemMsg (fromName, toName, type) VALUES (?, ?, "addFriend")',[username,targetUsername],(err,data)=>{
+          if(err) {
+            console.log(err);
+            return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
+          }
+          resData.type = 1;
+          resData.msg = '请求发送成功！';
+          return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
+        });
+      });
+    });
+  }else {
+    return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+  }
+});
+//获取系统消息
+userRouter.get('/getSystemMsg',(req,res:{json:(param:Res<any>)=>void})=>{
+  const resData:any =  {} as any;
+  const token = req.headers.authorization;
+  if(token){
+    jwt.verify(token,privateKey,(err:any, decoded:any)=>{
+      if(err) {
+        return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+      }
+      const {username} = decoded;
+      pool.query('select * from systemMsg where toName = ? and done=\'padding\' or fromName=? and done=\'failed\'',[username,username],(err,data)=>{
+        if(err) {
+          console.log(err);
+          return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
+        }
+        resData.result = data;
+        return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
+      });
+    });
+  }else {
+    return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+  }
+});
+//同意添加
+userRouter.get('/acceptAddFriend',(req,res:{json:(param:Res<any>)=>void})=>{
+  const resData:any =  {} as any;
+  const {msgId,fromName,toName} = req.query;
+  const token = req.headers.authorization;
+  if(token){
+    jwt.verify(token,privateKey,(err:any, decoded:any)=>{
+      if(err) {
+        return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+      }
+      new Promise((resolve,reject)=>{
+        pool.getConnection((err,connection)=>{
+          if(err) {
+            console.log(err);
+            return reject(resCode['serverErr']);
+          }
+          connection.beginTransaction((err)=>{
+            if (err) {
+              connection.release(); // 释放连接回连接池
+              console.error('Error starting transaction:', err);
+              return reject(resCode['serverErr']);
+            }
+            connection.query('insert into relationship set username=?,friendName=?',[fromName,toName],(err,data)=>{
+              if (err) {
+                return connection.rollback(() => {
+                  connection.release(); // 释放连接回连接池
+                  console.error('Error starting transaction:', err);
+                  reject(resCode['serverErr']);
+                });
+              }
+              connection.query('update systemMsg set done=\'success\' where msgId=?',[msgId],(err,data)=>{
+                if(err) {
+                  return connection.rollback(() => {
+                    connection.release(); // 释放连接回连接池
+                    console.error('Error starting transaction:', err);
+                    reject(resCode['serverErr']);
+                  });
+                }
+                connection.commit((commitError) => {
+                  if (commitError) {
+                    return connection.rollback(() => {
+                      connection.release(); // 释放连接回连接池
+                      console.error('Error committing transaction:', commitError);
+                      reject(resCode['serverErr']);
+                    });
+                  }
+                  // 释放连接回连接池
+                  connection.release();
+                  return resolve(1);
+                });
+              });
+            });
+          });
+        });
+      }).then(()=>{
+        return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
+      }).catch((err)=>{
+        return res.json({code:err,data:resData,msg:codeMapMsg[err]});
+      });
+    });
+  }else {
+    return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+  }
+});
+//拒绝添加
+userRouter.get('/rejectAddFriend/:msgId',(req,res:{json:(param:Res<any>)=>void})=>{
+  const resData:any =  {} as any;
+  const {msgId} = req.params;
+  const token = req.headers.authorization;
+  if(token){
+    jwt.verify(token,privateKey,(err:any, decoded:any)=>{
+      if(err) {
+        return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+      }
+      pool.query('update systemMsg set done=\'failed\',hadRead=0 where msgId=?',[msgId],(err,data)=>{
+        if(err){
+          console.log(err);
+          return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
+        }
+        return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
+      });
+    });
+  }else {
+    return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+  }
+});
+//删除系统消息
+userRouter.delete('/delSystemInfo/:msgId',(req,res:{json:(param:Res<any>)=>void})=>{
+  const resData:any =  {} as any;
+  const {msgId} = req.params;
+  const token = req.headers.authorization;
+  if(token){
+    jwt.verify(token,privateKey,(err:any, decoded:any)=>{
+      if(err) {
+        return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+      }});
+    pool.query('delete from systemMsg where msgId=?',[msgId],(err,data)=>{
+      if(err){
+        console.log(err);
+        return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
+      }
+      return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
+    });
+  }else {
+    return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+  }
+});
+//获取好友
+userRouter.get('/getFriends',(req,res:{json:(param:Res<any>)=>void})=>{
+  const resData:any =  {result:[]} as any;
+  const token = req.headers.authorization;
+  if(token){
+    jwt.verify(token,privateKey,(err:any, decoded:any)=>{
+      if(err) {
+        return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+      }
+      const {username} = decoded;
+      new Promise((resolve,reject)=>{
+        pool.query('select * from relationship where username=? or friendName=?',[username,username],(err,data)=>{
+          if(err){
+            console.log(err);
+            return reject(resCode['serverErr']);
+          }
+          const friends = data.map((item:any)=>{
+            if(item.username===username) return item.friendName as string;
+            return item.username as string;
+          });
+          const promises = friends.map((username:string)=>{
+            return new Promise((res2,rej2)=>{
+              pool.query('select * from users where username = ?',[username],(err,data)=>{
+                if(err){
+                  console.log(err);
+                  return rej2(resCode['serverErr']);
+                }
+                resData.result.push(...data);
+                res2(1);
+              });
+            });
+          });
+          Promise.all(promises).then(()=>{
+            resolve(1);
+          },(err)=>{
+            reject(err);
+          });
+        });
+      }).then(()=>{
+        return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
+      },(err)=>{
+        return res.json({code:err,data:resData,msg:codeMapMsg[err]});
+      });
+    });
+  }else {
+    return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+  }
+});
+
 
 // **** Export default **** //
 

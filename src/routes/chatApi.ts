@@ -130,6 +130,21 @@ io.on('connection',(socket)=>{
     });
   });
 
+  //添加好友
+  // socket.on('addOpera',(msg)=>{
+  //   if(socket.data.username){
+  //     const correspondSocket:any[] = [];
+  //     io.sockets.sockets.forEach((value,key) => {
+  //       msg.data.usernames.forEach(item=>{
+  //         console.log(value.data.username);
+  //         console.log(item);
+  //         if(item===value.data.username) correspondSocket.push(value);
+  //       });
+  //     });
+  //     console.log(correspondSocket);
+  //   }
+  // });
+
   //离开
   socket.on('disconnect',(msg)=>{
     if(socket.data.username) {
