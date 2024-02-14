@@ -9,6 +9,21 @@ import IP2Region  from 'ip2region';
 import { Res, codeMapMsg, resCode } from './types/types';
 import redisClient from '@src/redis/connect';
 import { ServerToUserMsg, TotalMsg, userToServerMsg } from './types/chatApi/chatApi';
+import multer from 'multer';
+import { v4 as uuidv4 } from 'uuid';
+
+// 设置文件上传的存储路径和文件名
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, path.resolve(__dirname+'/../public/image'));
+  },
+  filename: function (req, file, cb) {
+    cb(null, uuidv4() + path.extname(file.originalname)); // 保留原始文件的扩展名
+  },
+});
+
+const upload = multer({ storage: storage });
+
 
 
 const privateKey = fs.readFileSync(path.resolve(__dirname,'../../key/tokenKey.key'));
@@ -117,6 +132,7 @@ userRouter.post('/userLogin',(req,res)=>{
     });
  
   }).then((data)=>{
+    res.cookie('username', data, { maxAge: Math.floor(Date.now() / 1000) + (60 * 60 * 24), httpOnly: true });
     res.json({code:200,token:data});
   }).catch((err)=>{
     res.json({code:401,msg:err});
@@ -158,7 +174,7 @@ userRouter.get('/userConfirm',(req,res:{json:(param:Res<any>)=>void})=>{
             const groups = [] as Group[]; 
             data.forEach((item:any)=>{
               promises.push(new Promise((res,rej)=>{
-                pool.query('select * from groups where groupId=?',[item.groupId],(err,data)=>{
+                pool.query('select *,username AS authorby from groups where groupId=?',[item.groupId],(err,data)=>{
                   if(err) {
                     console.log(err);
                     return rej(resCode.serverErr);
@@ -186,7 +202,7 @@ userRouter.get('/userConfirm',(req,res:{json:(param:Res<any>)=>void})=>{
       res.json({code: resCode.success,data,msg:codeMapMsg[resCode.success]});
     },(err)=>{
       initResData(resData);
-      pool.query('select * from groups where groupId=1',(err2,data)=>{
+      pool.query('select *,username AS authorby from groups where groupId=1',(err2,data)=>{
         if(err2) {
           console.log(err2);
           return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
@@ -197,7 +213,7 @@ userRouter.get('/userConfirm',(req,res:{json:(param:Res<any>)=>void})=>{
     });
   }else {
     initResData(resData);
-    pool.query('select * from groups where groupId=1',(err,data)=>{
+    pool.query('select *,username AS authorby from groups where groupId=1',(err,data)=>{
       if(err) {
         console.log(err);
         return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
@@ -614,6 +630,130 @@ userRouter.get('/getFriends',(req,res:{json:(param:Res<any>)=>void})=>{
   }
 });
 
+//创建群聊
+userRouter.get('/createGroup',(req,res:{json:(param:Res<any>)=>void})=>{
+  const resData:any =  {result:[]} as any;
+  const {groupName,avatar} = req.query;
+  const token = req.headers.authorization;
+  if(token){
+    jwt.verify(token,privateKey,(err:any, decoded:any)=>{
+      if(err) {
+        return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+      }
+      const {username} = decoded;
+      pool.query('select count(*) from groups where username =? and type=\'group\'',[username],(err,data)=>{
+        if(err){
+          console.log(err);
+          return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
+        }
+        if(data[0]['count(*)']>=5) return res.json({code:resCode.limitErr,data:resData,msg:codeMapMsg[resCode.limitErr]});
+        new Promise((resolve,reject)=>{
+          pool.getConnection((err,connection)=>{
+            if(err) {
+              console.log(err);
+              return reject(resCode['serverErr']);
+            }
+            connection.beginTransaction((err)=>{
+              if (err) {
+                connection.release(); // 释放连接回连接池
+                console.error('Error starting transaction:', err);
+                return reject(resCode['serverErr']);
+              }
+              const groupId= uuidv4();
+              connection.query('insert into groups set groupName=?,gavatar=?,groupId=?,username=?,type=\'group\'',[groupName,avatar,groupId,username],(err,data)=>{
+                if(err) {
+                  return connection.rollback(() => {
+                    connection.release(); // 释放连接回连接池
+                    console.error('Error starting transaction:', err);
+                    reject(resCode['serverErr']);
+                  });
+                }
+                connection.query('insert into groupRelationship set groupId=?,username=?',[groupId,username],(err,data)=>{
+                  if(err) {
+                    return connection.rollback(() => {
+                      connection.release(); // 释放连接回连接池
+                      console.error('Error starting transaction:', err);
+                      reject(resCode['serverErr']);
+                    });
+                  }
+                  connection.commit((commitError) => {
+                    if (commitError) {
+                      return connection.rollback(() => {
+                        connection.release(); // 释放连接回连接池
+                        console.error('Error committing transaction:', commitError);
+                        reject(resCode['serverErr']);
+                      });
+                    }
+                    // 释放连接回连接池
+                    connection.release();
+                    return resolve(1);
+                  });
+                
+                });
+              });
+            });
+          });
+        }).then(()=>{
+          return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
+        },(err)=>{
+          return res.json({code:err,data:resData,msg:codeMapMsg[err]});
+        });
+
+      });
+    });
+  }else {
+    return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+  }
+});
+
+//获取用户下的所有群
+userRouter.get('/getGroups',(req,res:{json:(param:Res<any>)=>void})=>{
+  const resData:any =  {result:[]} as any;
+  const token = req.headers.authorization;
+  if(token){
+    jwt.verify(token,privateKey,(err:any, decoded:any)=>{
+      if(err) {
+        return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+      }
+      const {username} = decoded;
+      pool.query('select groups.*,groups.username AS authorBy,groupRelationship.username from groupRelationship,groups where groupRelationship.username=? and groupRelationship.groupId=groups.groupId',[username],(err,data)=>{
+        if(err) {
+          console.log(err);
+          return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
+        }
+        resData.result = data;
+        res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
+      });
+    });
+  }else {
+    return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+  }
+});
+
+//图片上传功能
+userRouter.post('/uploadImage',upload.single('image'),(req:any,res:{json:(param:Res<any>)=>void})=>{
+  const resData:any =  {result:[]} as any;
+  const token = req.cookies.username;
+  const filePath = req.file.path;
+  const fileName = req.file.filename;
+  if(token){
+    jwt.verify(token,privateKey,(err:any, decoded:any)=>{
+      if(err) {
+        fs.unlink(filePath, (err) => {
+          if (err) {
+            console.error('文件删除失败：', err);
+          }
+          console.log('文件删除成功');
+        });
+        return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+      }
+      resData.src = '/image/' +fileName;
+      res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
+    });
+  }else {
+    return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+  }
+});
 
 // **** Export default **** //
 

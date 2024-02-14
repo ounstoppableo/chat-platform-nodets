@@ -25,14 +25,16 @@ export enum resCode {
   tokenErr = 403,
   success = 200,
   serverErr = 500,
-  paramsErr = 404
+  paramsErr = 404,
+  limitErr = 201 
 }
 
 export enum codeMapMsg {
   'token失效' = 403,
   '请求成功' = 200,
   '服务器错误' = 500,
-  '参数错误' = 404
+  '参数错误' = 404,
+  '超过创建限制' = 201
 }
 
 export interface Res<T> {

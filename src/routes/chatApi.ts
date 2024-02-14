@@ -45,8 +45,10 @@ io.on('connection',(socket)=>{
   socket.on('joinRoom',(groupIds)=>{
     if(!!groupIds.length){
       groupIds.forEach((item:any)=>{
+        if(socket.data.groups&&socket.data.groups.includes(item.groupId)) {
+          return;
+        }
         socket.data.groups?socket.data.groups.push(item.groupId):socket.data.groups=[item.groupId];
-        socket.join(item.groupId);
       });
     }
   });
