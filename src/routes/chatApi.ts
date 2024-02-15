@@ -43,13 +43,24 @@ io.on('connection',(socket)=>{
   }
   //加入群聊
   socket.on('joinRoom',(groupIds)=>{
-    if(!!groupIds.length){
+    if(typeof groupIds==='object'&&!!groupIds.length){
       groupIds.forEach((item:any)=>{
         if(socket.data.groups&&socket.data.groups.includes(item.groupId)) {
           return;
         }
         socket.data.groups?socket.data.groups.push(item.groupId):socket.data.groups=[item.groupId];
+        socket.join(item.groupId);
       });
+    }else {
+      if(socket.data.groups&&socket.data.groups.includes(groupIds)) {
+        return;
+      }
+      socket.data.groups?socket.data.groups.push(groupIds):socket.data.groups=[groupIds];
+      pool.query('select username,region,avatar,isOnline,uid from users where username = ?',[socket.data.username],(err,data)=>{
+        if(err) return console.log(err);
+        io.to(groupIds).emit('addGroupMember',{groupId:groupIds as string,userInfo:data[0]});
+      });
+      socket.join(groupIds);
     }
   });
   //接收客户端的消息
@@ -70,7 +81,7 @@ io.on('connection',(socket)=>{
               console.log(err);
             });
           }
-          connection.query('update groups set lastMsg = ?,date = ?,lastMsgUser = ? where groupId=?',[msg.msg,dayjs(msg.time).format('YYYY-MM-DD HH:mm:ss'),socket.data.username,msg.room],(err)=>{
+          connection.query('update groups set lastMsg = ?,time = ?,lastMsgUser = ? where groupId=?',[msg.msg,dayjs(msg.time).format('YYYY-MM-DD HH:mm:ss'),socket.data.username,msg.room],(err)=>{
             if(err) {
               return  connection.rollback(() => {
                 connection.release(); // 释放连接回连接池

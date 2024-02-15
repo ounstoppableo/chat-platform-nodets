@@ -11,6 +11,7 @@ import redisClient from '@src/redis/connect';
 import { ServerToUserMsg, TotalMsg, userToServerMsg } from './types/chatApi/chatApi';
 import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
+import dayjs from 'dayjs';
 
 // 设置文件上传的存储路径和文件名
 const storage = multer.diskStorage({
@@ -238,7 +239,7 @@ userRouter.get('/groupMembers/:groupId',(req,res:{json:(param:Res<any>)=>void})=
         }
         const usernames = data;
         const promises:Promise<any>[] = usernames.map((item:any)=>new Promise((res,rej)=>{
-          pool.query('select username,avatar,uid,isOnline from users where username=?',[item.username],(err,data)=>{
+          pool.query('select username,avatar,uid,isOnline,region from users where username=?',[item.username],(err,data)=>{
             if(err){
               console.log(err);
               return rej(resCode.serverErr);
@@ -660,7 +661,7 @@ userRouter.get('/createGroup',(req,res:{json:(param:Res<any>)=>void})=>{
                 return reject(resCode['serverErr']);
               }
               const groupId= uuidv4();
-              connection.query('insert into groups set groupName=?,gavatar=?,groupId=?,username=?,type=\'group\'',[groupName,avatar,groupId,username],(err,data)=>{
+              connection.query('insert into groups set groupName=?,gavatar=?,groupId=?,username=?,type=\'group\',time=?',[groupName,avatar,groupId,username,dayjs(new Date()).format('YYYY-MM-DD HH:mm:ss')],(err,data)=>{
                 if(err) {
                   return connection.rollback(() => {
                     connection.release(); // 释放连接回连接池
@@ -754,6 +755,144 @@ userRouter.post('/uploadImage',upload.single('image'),(req:any,res:{json:(param:
     return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
   }
 });
+
+//添加群成员
+userRouter.post('/addGroupMember',(req,res:{json:(param:Res<any>)=>void})=>{  
+  const resData:any =  {result:[]} as any;
+  const {groupId,groupName,targetsUsernames} = req.body;
+  const token = req.headers.authorization;
+  if(token){
+    jwt.verify(token,privateKey,(err:any, decoded:any)=>{
+      if(err) {
+        return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+      }
+      const {username} = decoded;
+      const promises = targetsUsernames.map((toName:string)=>{
+        return new Promise((resolve,reject)=>{
+          pool.query('select * from systemMsg where fromName=? and toName=? and done="padding" and type="addGroupMember"',[username,toName],(err,data)=>{
+            if(err){
+              console.log(err);
+              return reject(resCode.serverErr);
+            }
+            if(data.length!==0) return resolve(1);
+            pool.query('insert into systemMsg set fromName=?,toName=?,type="addGroupMember",done="padding",groupName=?,groupId=?',[username,toName,groupName,groupId],(err,data)=>{
+              if(err){
+                console.log(err);
+                return reject(resCode.serverErr);
+              }
+              resolve(1);
+            });
+          });
+        });
+      });
+      Promise.all(promises).then(()=>{
+        return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
+      },(err)=>{
+        return res.json({code:err,data:resData,msg:codeMapMsg[err]});
+      });
+    });
+  }else {
+    return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+  }
+});
+//同意加群
+userRouter.post('/acceptJoinGroup',(req,res:{json:(param:Res<any>)=>void})=>{
+  const resData:any =  {result:[]} as any;
+  const {systemMsg} = req.body;
+  const token = req.headers.authorization;
+  if(token){
+    jwt.verify(token,privateKey,(err:any, decoded:any)=>{
+      if(err) {
+        return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+      }
+      const {username} = decoded;
+      if(username===systemMsg.toName) {
+        new Promise((resolve,reject)=>{
+          pool.getConnection((err,connection)=>{
+            if(err) {
+              console.log(err);
+              return reject(resCode['serverErr']);
+            }
+            connection.beginTransaction((err)=>{
+              if (err) {
+                connection.release(); // 释放连接回连接池
+                console.error('Error starting transaction:', err);
+                return reject(resCode['serverErr']);
+              }
+              connection.query('update systemMsg set done="success" where msgId=?',[systemMsg.msgId],(err,data)=>{
+                if(err) {
+                  return connection.rollback(() => {
+                    connection.release(); // 释放连接回连接池
+                    console.error('Error starting transaction:', err);
+                    reject(resCode['serverErr']);
+                  });
+                }
+                connection.query('insert into groupRelationship set groupId=?,username=?',[systemMsg.groupId,systemMsg.toName],(err,data)=>{
+                  if(err) {
+                    return connection.rollback(() => {
+                      connection.release(); // 释放连接回连接池
+                      console.error('Error starting transaction:', err);
+                      reject(resCode['serverErr']);
+                    });
+                  }
+                  connection.commit((commitError) => {
+                    if (commitError) {
+                      return connection.rollback(() => {
+                        connection.release(); // 释放连接回连接池
+                        console.error('Error committing transaction:', commitError);
+                        reject(resCode['serverErr']);
+                      });
+                    }
+                    // 释放连接回连接池
+                    connection.release();
+                    return resolve(1);
+                  });
+                
+                });
+              });
+            });
+          });
+        }).then(()=>{
+          return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
+        },(err)=>{
+          return res.json({code:err,data:resData,msg:codeMapMsg[err]});
+        });
+      }else {
+        return res.json({code:resCode.paramsErr,data:resData,msg:codeMapMsg[resCode.paramsErr]});
+      }
+    });
+  }else {
+    return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+  }
+});
+//拒绝加群
+userRouter.post('/rejectJoinGroup',(req,res:{json:(param:Res<any>)=>void})=>{
+  const resData:any =  {result:[]} as any;
+  const {systemMsg} = req.body;
+  const token = req.headers.authorization;
+  if(token){
+    jwt.verify(token,privateKey,(err:any, decoded:any)=>{
+      if(err) {
+        return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+      }
+      const {username} = decoded;
+      if(username===systemMsg.toName) {
+        pool.query('update systemMsg set done=\'failed\',hadRead=0 where msgId=?',[systemMsg.msgId],(err,data)=>{
+          if(err) {
+            console.log(err);
+            return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
+          }
+          return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
+        });
+      }else {
+        return res.json({code:resCode.paramsErr,data:resData,msg:codeMapMsg[resCode.paramsErr]});
+      }
+    });
+  }else {
+    return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+  }
+});
+
 
 // **** Export default **** //
 

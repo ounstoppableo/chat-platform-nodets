@@ -1,3 +1,5 @@
+import { UserInfo } from '../userApi/userApi';
+
 export interface ServerToClientEvents {
     someoneStatusChange: (param: { username: string, isOnline: boolean }) => void,
     toRoomClient: (msg: ServerToUserMsg) => void;
@@ -15,9 +17,10 @@ export interface ServerToClientEvents {
         msgId: number;
         room: string;
     }) => void;
+    addGroupMember:({userInfo,groupId}:{userInfo:UserInfo,groupId:string})=>void
 }
 export interface ClientToServerEvents {
-    joinRoom: (groupIds: string[]) => void,
+    joinRoom: (groupIds: any[]|string) => void,
     msgToServer: (msg: userToServerMsg) => void,
     likeSbMsg: (msg: { username: string, msgId: number, likes: number, room: string; }) => void;
     cancelLikeSbMsg: (msg: { username: string, msgId: number, likes: number, room: string; }) => void;
