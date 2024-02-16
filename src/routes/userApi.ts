@@ -12,6 +12,7 @@ import { ServerToUserMsg, TotalMsg, userToServerMsg } from './types/chatApi/chat
 import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
 import dayjs from 'dayjs';
+import { validateString } from '@src/util/validateString';
 
 // 设置文件上传的存储路径和文件名
 const storage = multer.diskStorage({
@@ -44,6 +45,7 @@ userRouter.post('/userLogin',(req,res)=>{
   const ip =req.headers['x-forwarded-for'];
   const avatarPath = path.resolve(__dirname,'../public/avatar/');
   const {username,password} = req.body;
+  if(validateString(username)) return res.json({code:resCode.paramsErr,data:{},msg:codeMapMsg[resCode.paramsErr]});
   new Promise((res,rej)=>{
     pool.query('select username,password from users where username = ?',[username],(err,data)=>{
       if(err) {
@@ -175,7 +177,7 @@ userRouter.get('/userConfirm',(req,res:{json:(param:Res<any>)=>void})=>{
             const groups = [] as Group[]; 
             data.forEach((item:any)=>{
               promises.push(new Promise((res,rej)=>{
-                pool.query('select *,username AS authorby from groups where groupId=?',[item.groupId],(err,data)=>{
+                pool.query('select *,username AS authorBy from groups where groupId=?',[item.groupId],(err,data)=>{
                   if(err) {
                     console.log(err);
                     return rej(resCode.serverErr);
@@ -203,7 +205,7 @@ userRouter.get('/userConfirm',(req,res:{json:(param:Res<any>)=>void})=>{
       res.json({code: resCode.success,data,msg:codeMapMsg[resCode.success]});
     },(err)=>{
       initResData(resData);
-      pool.query('select *,username AS authorby from groups where groupId=1',(err2,data)=>{
+      pool.query('select *,username AS authorBy from groups where groupId=1',(err2,data)=>{
         if(err2) {
           console.log(err2);
           return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
@@ -214,7 +216,7 @@ userRouter.get('/userConfirm',(req,res:{json:(param:Res<any>)=>void})=>{
     });
   }else {
     initResData(resData);
-    pool.query('select *,username AS authorby from groups where groupId=1',(err,data)=>{
+    pool.query('select *,username AS authorBy from groups where groupId=1',(err,data)=>{
       if(err) {
         console.log(err);
         return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
@@ -599,17 +601,17 @@ userRouter.get('/getFriends',(req,res:{json:(param:Res<any>)=>void})=>{
             return reject(resCode['serverErr']);
           }
           const friends = data.map((item:any)=>{
-            if(item.username===username) return item.friendName as string;
-            return item.username as string;
+            if(item.username===username) return {username:item.friendName as string,groupId:item.groupId,groupName:item.groupName};
+            return {username:item.username as string,groupId:item.groupId,groupName:item.groupName};
           });
-          const promises = friends.map((username:string)=>{
+          const promises = friends.map((friend:any)=>{
             return new Promise((res2,rej2)=>{
-              pool.query('select * from users where username = ?',[username],(err,data)=>{
+              pool.query('select * from users where username = ?',[friend.username],(err,data)=>{
                 if(err){
                   console.log(err);
                   return rej2(resCode['serverErr']);
                 }
-                resData.result.push(...data);
+                resData.result.push({...data[0],groupId:friend.groupId,groupName:friend.groupName});
                 res2(1);
               });
             });
@@ -636,6 +638,7 @@ userRouter.get('/createGroup',(req,res:{json:(param:Res<any>)=>void})=>{
   const resData:any =  {result:[]} as any;
   const {groupName,avatar} = req.query;
   const token = req.headers.authorization;
+  if(groupName&&validateString(groupName as string)) return res.json({code:resCode.paramsErr,data:resData,msg:codeMapMsg[resCode.paramsErr]});
   if(token){
     jwt.verify(token,privateKey,(err:any, decoded:any)=>{
       if(err) {
@@ -717,7 +720,7 @@ userRouter.get('/getGroups',(req,res:{json:(param:Res<any>)=>void})=>{
         return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
       }
       const {username} = decoded;
-      pool.query('select groups.*,groups.username AS authorBy,groupRelationship.username from groupRelationship,groups where groupRelationship.username=? and groupRelationship.groupId=groups.groupId',[username],(err,data)=>{
+      pool.query('select groups.*,groups.username AS authorBy from groupRelationship,groups where groupRelationship.username=? and groupRelationship.groupId=groups.groupId',[username],(err,data)=>{
         if(err) {
           console.log(err);
           return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});

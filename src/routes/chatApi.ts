@@ -1,10 +1,12 @@
 import { io } from '@src/upgradeServer';
 import redisClient from '@src/redis/connect';
-import path from 'path';
+import path, { resolve } from 'path';
 import jwt from 'jsonwebtoken';
 import fs from 'fs';
 import pool from '@src/mysql/pool';
 import dayjs from 'dayjs';
+import { validateInput } from '@src/util/validateInput';
+import { v4 as uuidv4 } from 'uuid';
 
 const privateKey = fs.readFileSync(path.resolve(__dirname,'../../key/tokenKey.key'));
 
@@ -36,6 +38,7 @@ io.on('connection',(socket)=>{
   if(socket.data.username) {
     pool.query('update users set isOnline = ? where username = ?',[1,socket.data.username],(err,data)=>{
       if(err) {
+        socket.emit('clientError',{msg:'操作失败，请稍后重试'});
         return console.log(err);
       }
       io.emit('someoneStatusChange',{username:socket.data.username,isOnline:true});
@@ -57,58 +60,73 @@ io.on('connection',(socket)=>{
       }
       socket.data.groups?socket.data.groups.push(groupIds):socket.data.groups=[groupIds];
       pool.query('select username,region,avatar,isOnline,uid from users where username = ?',[socket.data.username],(err,data)=>{
-        if(err) return console.log(err);
-        io.to(groupIds).emit('addGroupMember',{groupId:groupIds as string,userInfo:data[0]});
+        if(err) {
+          socket.emit('clientError',{msg:'操作失败，请稍后重试'});
+          return console.log(err);
+        }
+        io.to(groupIds).emit('addGroup',{groupId:groupIds as string,userInfo:data[0]});
       });
       socket.join(groupIds);
     }
   });
   //接收客户端的消息
   socket.on('msgToServer',(msg)=>{
-    pool.getConnection((err,connection)=>{
-      if(err) {
-        return  console.log(err);
-      }
-      connection.beginTransaction((err)=>{
+    if(socket.data.username){
+      msg.msg = validateInput(msg.msg);
+      pool.getConnection((err,connection)=>{
         if(err) {
-          connection.release();
+          socket.emit('clientError',{msg:'操作失败，请稍后重试'});
           return  console.log(err);
         }
-        connection.query('insert gmessage set username=?,time=?,text=?,timestamp=?,likes=?,dislikes=?,groupId=?',[socket.data.username,dayjs(msg.time).format('YYYY-MM-DD HH:mm:ss'),msg.msg,dayjs(msg.time).unix(),0,0,msg.room],(err,data)=>{
+        connection.beginTransaction((err)=>{
           if(err) {
-            return  connection.rollback(() => {
-              connection.release(); // 释放连接回连接池
-              console.log(err);
-            });
+            socket.emit('clientError',{msg:'操作失败，请稍后重试'});
+            connection.release();
+            return  console.log(err);
           }
-          connection.query('update groups set lastMsg = ?,time = ?,lastMsgUser = ? where groupId=?',[msg.msg,dayjs(msg.time).format('YYYY-MM-DD HH:mm:ss'),socket.data.username,msg.room],(err)=>{
+          connection.query('insert gmessage set username=?,time=?,text=?,timestamp=?,likes=?,dislikes=?,groupId=?',[socket.data.username,dayjs(msg.time).format('YYYY-MM-DD HH:mm:ss'),msg.msg,dayjs(msg.time).unix(),0,0,msg.room],(err,data)=>{
             if(err) {
               return  connection.rollback(() => {
+                socket.emit('clientError',{msg:'操作失败，请稍后重试'});
                 connection.release(); // 释放连接回连接池
                 console.log(err);
               });
             }
-            connection.commit((commitError)=>{
-              if (commitError) {
-                return connection.rollback(() => {
+            connection.query('update groups set lastMsg = ?,time = ?,lastMsgUser = ? where groupId=?',[msg.msg,dayjs(msg.time).format('YYYY-MM-DD HH:mm:ss'),socket.data.username,msg.room],(err)=>{
+              if(err) {
+                return  connection.rollback(() => {
+                  socket.emit('clientError',{msg:'操作失败，请稍后重试'});
                   connection.release(); // 释放连接回连接池
-                  console.error('Error committing transaction:', commitError);
+                  console.log(err);
                 });
               }
-              // 释放连接回连接池
-              connection.release();
-              io.to(msg.room).emit('toRoomClient',Object.assign({username:socket.data.username,id:data.insertId,likes:0,dislikes:0},msg));
+              connection.commit((commitError)=>{
+                if (commitError) {
+                  return connection.rollback(() => {
+                    socket.emit('clientError',{msg:'操作失败，请稍后重试'});
+                    connection.release(); // 释放连接回连接池
+                    console.error('Error committing transaction:', commitError);
+                  });
+                }
+                // 释放连接回连接池
+                connection.release();
+                io.to(msg.room).emit('toRoomClient',Object.assign({username:socket.data.username,id:data.insertId,likes:0,dislikes:0},msg));
+              });
             });
           });
         });
       });
-    });
+    }else {
+      socket.emit('clientError',{msg:'请登录后再发言！'});
+    }
+
 
   });
   //喜欢某消息
   socket.on('likeSbMsg',(msg)=>{
     pool.query('update gmessage set likes = ? where id=?',[msg.likes+1,msg.msgId],(err,data)=>{
       if(err) {
+        socket.emit('clientError',{msg:'操作失败，请稍后重试'});
         return  console.log(err);
       }
       io.to(msg.room).emit('sbLikeMsg',{success:true,likes:msg.likes+1,msgId:msg.msgId,room:msg.room,type:'like'});
@@ -118,6 +136,7 @@ io.on('connection',(socket)=>{
   socket.on('cancelLikeSbMsg',(msg)=>{
     pool.query('update gmessage set likes = ? where id=?',[msg.likes-1,msg.msgId],(err,data)=>{
       if(err) {
+        socket.emit('clientError',{msg:'操作失败，请稍后重试'});
         return  console.log(err);
       }
       io.to(msg.room).emit('cancelSbLikeMsg',{success:true,likes:msg.likes-1,msgId:msg.msgId,room:msg.room,type:'cancelLike'});
@@ -128,6 +147,7 @@ io.on('connection',(socket)=>{
   socket.on('dislikeSbMsg',(msg)=>{
     pool.query('update gmessage set dislikes = ? where id=?',[msg.dislikes+1,msg.msgId],(err,data)=>{
       if(err) {
+        socket.emit('clientError',{msg:'操作失败，请稍后重试'});
         return  console.log(err);
       }
       io.to(msg.room).emit('sbDislikeMsg',{success:true,dislikes:msg.dislikes+1,msgId:msg.msgId,room:msg.room});
@@ -137,32 +157,183 @@ io.on('connection',(socket)=>{
   socket.on('cancelDislikeSbMsg',(msg)=>{
     pool.query('update gmessage set dislikes = ? where id=?',[msg.dislikes-1,msg.msgId],(err,data)=>{
       if(err) {
+        socket.emit('clientError',{msg:'操作失败，请稍后重试'});
         return  console.log(err);
       }
       io.to(msg.room).emit('cancelSbDislikeMsg',{success:true,dislikes:msg.dislikes-1,msgId:msg.msgId,room:msg.room});
     });
   });
 
-  //添加好友
-  // socket.on('addOpera',(msg)=>{
-  //   if(socket.data.username){
-  //     const correspondSocket:any[] = [];
-  //     io.sockets.sockets.forEach((value,key) => {
-  //       msg.data.usernames.forEach(item=>{
-  //         console.log(value.data.username);
-  //         console.log(item);
-  //         if(item===value.data.username) correspondSocket.push(value);
-  //       });
-  //     });
-  //     console.log(correspondSocket);
-  //   }
-  // });
+  //p2p聊天
+  socket.on('p2pChat',(msg)=>{
+    if(socket.data.username){
+      msg.msg = validateInput(msg.msg);
+      new Promise((resolve:(data:{
+        groupName: string,
+        groupId: string,
+        username: string,
+        gavatar: any,
+        lastMsg: any,
+        time: any,
+        lastMsgUser: any,
+        type: 'p2p',
+        fromAvatar: string,
+        toAvatar: string,
+        toUsername: string,
+        authorBy:string,
+      }
+    )=>any,reject)=>{
+        //看有没有群，没有就创建一个
+        pool.query('select *,username as authorBy from groups where groupName=? or groupName=?',[msg.fromName+'&&&'+msg.toName,msg.toName+'&&&'+msg.fromName],(err,data)=>{
+          if(err){
+            reject('操作失败，请稍后重试!');
+            return console.log(err);
+          }
+          if(data.length!==0){
+            resolve(data[0]);
+          }else{
+            const groupId = uuidv4();
+            pool.getConnection((err,connection)=>{
+              if(err) {
+                reject('操作失败，请稍后重试');
+                return  console.log(err);
+              }
+              connection.beginTransaction((err)=>{
+                if(err) {
+                  reject('操作失败，请稍后重试');
+                  connection.release();
+                  return  console.log(err);
+                }
+                connection.query('insert into groups set groupName=?,groupId=?,username=?,fromAvatar=?,toAvatar=?,toUsername=?,type=\'p2p\'',[msg.fromName+'&&&'+msg.toName,groupId,msg.fromName,msg.fromAvatar,msg.toAvatar,msg.toName],(err,data)=>{
+                  if(err) {
+                    return  connection.rollback(() => {
+                      reject('操作失败，请稍后重试');
+                      connection.release(); // 释放连接回连接池
+                      console.log(err);
+                    });
+                  }
+                  connection.query('insert into groupRelationship (groupId,username) values (?,?),(?,?)',[groupId,msg.fromName,groupId,msg.toName],(err)=>{
+                    if(err) {
+                      return  connection.rollback(() => {
+                        reject('操作失败，请稍后重试');
+                        connection.release(); // 释放连接回连接池
+                        console.log(err);
+                      });
+                    }
+                    connection.query('update relationship set groupId=?,groupName=? where username=? and friendName=? or username=? and friendName=?',[groupId,msg.fromName+'&&&'+msg.toName,msg.fromName,msg.toName,msg.toName,msg.fromName],(err)=>{
+                      if(err) {
+                        return  connection.rollback(() => {
+                          reject('操作失败，请稍后重试');
+                          connection.release(); // 释放连接回连接池
+                          console.log(err);
+                        });
+                      }
+                      connection.commit((commitError)=>{
+                        if (commitError) {
+                          return connection.rollback(() => {
+                            reject('操作失败，请稍后重试');
+                            connection.release(); // 释放连接回连接池
+                            console.error('Error committing transaction:', commitError);
+                          });
+                        }
+                        // 释放连接回连接池
+                        connection.release();
+                        resolve({        
+                          groupName: msg.fromName+'&&&'+msg.toName,
+                          groupId: groupId,
+                          username: msg.fromName,
+                          gavatar: null,
+                          lastMsg: null,
+                          time: null,
+                          lastMsgUser: null,
+                          type: 'p2p',
+                          fromAvatar: msg.fromAvatar,
+                          toAvatar: msg.toAvatar,
+                          toUsername: msg.toName,
+                          authorBy: msg.fromName,
+                        });
+                      });
+                    });
+                  });
+                });
+              });
+            });
+          }
+        });
+      }).then((res)=>{
+        io.sockets.sockets.forEach((item:any)=>{
+          if(item.data.username===res.username||item.data.username===res.toUsername){ 
+            if(!item.data.groups || !item.data.groups.includes(res.groupId)) {
+              item.join(res.groupId);
+              item.data.groups?item.data.groups.push(res.groupId):item.data.groups=[res.groupId];
+              item.emit('addGroup',{groupId:res.groupId,groupInfo:res});
+            }
+          }
+        });
+
+        new Promise((resolve,reject)=>{
+          pool.getConnection((err,connection)=>{
+            if(err) {
+              reject('操作失败，请稍后重试');
+              return  console.log(err);
+            }
+            connection.beginTransaction((err)=>{
+              if(err) {
+                reject('操作失败，请稍后重试');
+                connection.release();
+                return  console.log(err);
+              }
+              connection.query('insert into gmessage set username=?,time=?,text=?,timestamp=?,groupId=?',[msg.fromName,dayjs(msg.time).format('YYYY-MM-DD HH:mm:ss'),msg.msg,dayjs(msg.time).unix(),res.groupId],(err,data)=>{
+                if(err) {
+                  return  connection.rollback(() => {
+                    reject('操作失败，请稍后重试');
+                    connection.release(); // 释放连接回连接池
+                    console.log(err);
+                  });
+                }
+                connection.query('update groups set lastMsg = ?,time = ?,lastMsgUser = ? where groupId=?',[msg.msg,dayjs(msg.time).format('YYYY-MM-DD HH:mm:ss'),msg.fromName,res.groupId],(err)=>{
+                  if(err) {
+                    return  connection.rollback(() => {
+                      reject('操作失败，请稍后重试');
+                      connection.release(); // 释放连接回连接池
+                      console.log(err);
+                    });
+                  }
+                  connection.commit((commitError)=>{
+                    if (commitError) {
+                      return connection.rollback(() => {
+                        reject('操作失败，请稍后重试');
+                        connection.release(); // 释放连接回连接池
+                        console.error('Error committing transaction:', commitError);
+                      });
+                    }
+                    // 释放连接回连接池
+                    connection.release();
+                    resolve(data);
+                  });
+                });
+              });
+            });
+          });
+        }).then((data:any)=>{
+          io.to(res.groupId).emit('toRoomClient',{username:msg.fromName,avatar:msg.fromAvatar,room:res.groupId,msg:msg.msg,time:msg.time,id:data.insertId,likes:0,dislikes:0});
+        },(err)=>{
+          socket.emit('clientError',{msg:err});
+        });
+      },(err)=>{
+        socket.emit('clientError',{msg:err});
+      });
+    }else {
+      socket.emit('clientError',{msg:'请登录后再发言！'});
+    }
+  });
 
   //离开
   socket.on('disconnect',(msg)=>{
     if(socket.data.username) {
       pool.query('update users set isOnline = ? where username = ?',[0,socket.data.username],(err,data)=>{
         if(err) {
+          socket.emit('clientError',{msg:'操作失败，请稍后重试'});
           return console.log(err);
         }
         io.emit('someoneStatusChange',{username:socket.data.username,isOnline:false});

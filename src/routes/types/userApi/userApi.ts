@@ -18,11 +18,17 @@ export interface UserInfo {
 }
 
 export interface Group{
-    groupName:  string,
-    groupId: string,
-    username: string,
-    gavatar: string,
-    lastMsg: string,
-    date: Date
+    groupName: string;
+    groupId: string;
+    username: string;
+    gavatar: string;
+    lastMsg: string;
+    time: Date;
+    hadNewMsg: boolean;
+    lastMsgUser: string;
+    type: string;
+    fromAvatar: string;
+    toAvatar: string;
+    toUsername: string;
 }
 

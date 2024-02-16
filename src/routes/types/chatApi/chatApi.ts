@@ -1,4 +1,4 @@
-import { UserInfo } from '../userApi/userApi';
+import { Group, UserInfo } from '../userApi/userApi';
 
 export interface ServerToClientEvents {
     someoneStatusChange: (param: { username: string, isOnline: boolean }) => void,
@@ -17,7 +17,8 @@ export interface ServerToClientEvents {
         msgId: number;
         room: string;
     }) => void;
-    addGroupMember:({userInfo,groupId}:{userInfo:UserInfo,groupId:string})=>void
+    addGroup:(msg:{userInfo?:UserInfo,groupId:string,groupInfo?:Group})=>void;
+    clientError: (err: { msg: string }) => void;
 }
 export interface ClientToServerEvents {
     joinRoom: (groupIds: any[]|string) => void,
@@ -36,6 +37,7 @@ export interface ClientToServerEvents {
         dislikes: number;
         room: string;
     }) => void;
+    p2pChat:(msg: Omit<userToServerMsg,'room'|'avatar'>&{fromName:string;toName:string,fromAvatar:string,toAvatar:string})=>void
 }
 export interface InterServerEvents {
     disconnect: () => void;
@@ -46,7 +48,7 @@ export interface SocketData {
     groups: any[]
 }
 export type userToServerMsg = {
-    avatar: string, room: string, msg: string, time: Date, timestamp: number, likes: number, dislikes: number, id: number
+    avatar: string, room: string, msg: string, time: Date,id:number,likes:number,dislikes:number
 }
 export type ServerToUserMsg = userToServerMsg & {
     username: string
