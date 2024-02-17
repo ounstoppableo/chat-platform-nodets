@@ -69,10 +69,11 @@ io.on('connection',(socket)=>{
       socket.join(groupIds);
     }
   });
-  //接收客户端的消息
+  //接收客户端的消息(群聊天)
   socket.on('msgToServer',(msg)=>{
     if(socket.data.username){
       msg.msg = validateInput(msg.msg);
+      msg.atMembers = msg.atMembers?.map(item=>msg.msg.includes('@'+item+' ')?item:'').filter(item=>item!=='');
       pool.getConnection((err,connection)=>{
         if(err) {
           socket.emit('clientError',{msg:'操作失败，请稍后重试'});
@@ -84,7 +85,7 @@ io.on('connection',(socket)=>{
             connection.release();
             return  console.log(err);
           }
-          connection.query('insert gmessage set username=?,time=?,text=?,timestamp=?,likes=?,dislikes=?,groupId=?',[socket.data.username,dayjs(msg.time).format('YYYY-MM-DD HH:mm:ss'),msg.msg,dayjs(msg.time).unix(),0,0,msg.room],(err,data)=>{
+          connection.query('insert gmessage set username=?,time=?,text=?,timestamp=?,likes=?,dislikes=?,groupId=?,atMembers=?,forMsg=?',[socket.data.username,dayjs(msg.time).format('YYYY-MM-DD HH:mm:ss'),msg.msg,dayjs(msg.time).unix(),0,0,msg.room,JSON.stringify(msg.atMembers),msg.forMsg],(err,data)=>{
             if(err) {
               return  connection.rollback(() => {
                 socket.emit('clientError',{msg:'操作失败，请稍后重试'});
@@ -110,7 +111,7 @@ io.on('connection',(socket)=>{
                 }
                 // 释放连接回连接池
                 connection.release();
-                io.to(msg.room).emit('toRoomClient',Object.assign({username:socket.data.username,id:data.insertId,likes:0,dislikes:0},msg));
+                io.to(msg.room).emit('toRoomClient',Object.assign({username:socket.data.username,id:data.insertId,likes:0,dislikes:0,forMsg:msg.forMsg},msg));
               });
             });
           });

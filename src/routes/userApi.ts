@@ -334,7 +334,7 @@ userRouter.get('/totalMsg/:username?',(req,res:{json:(param:Res<TotalMsg>)=>void
                     return rej2(resCode['serverErr']);
                   }
                   resData[item.groupId] = data.map((item2:any)=>({
-                    id:item2.id,username:item2.username,room:item2.groupId,msg:item2.text,time:item2.time,timestamp:item2.timestamp,likes:item2.likes,dislikes:item2.dislikes,
+                    id:item2.id,username:item2.username,room:item2.groupId,msg:item2.text,time:item2.time,timestamp:item2.timestamp,likes:item2.likes,dislikes:item2.dislikes,atMembers:JSON.parse(item2.atMembers),forMsg:item2.forMsg,
                   }));
                   const promises2 = resData[item.groupId].map((item3:any,index:number)=>{
                     return new Promise((res3,rej3)=>{
@@ -379,7 +379,7 @@ userRouter.get('/totalMsg/:username?',(req,res:{json:(param:Res<TotalMsg>)=>void
           return rej(err);
         }
         resData['1'] = data.map((item:any)=>({
-          id:item.id,username:item.username,room:item.groupId,msg:item.text,time:item.time,timestamp:item.timestamp,likes:item.likes,dislikes:item.dislikes,
+          id:item.id,username:item.username,room:item.groupId,msg:item.text,time:item.time,timestamp:item.timestamp,likes:item.likes,dislikes:item.dislikes,atMembers:JSON.parse(item.atMembers),forMsg:item.forMsg,
         }));
         const promises = resData['1'].map((item2:any,index:number)=>{
           return new Promise((res2,rej2)=>{
@@ -606,7 +606,7 @@ userRouter.get('/getFriends',(req,res:{json:(param:Res<any>)=>void})=>{
           });
           const promises = friends.map((friend:any)=>{
             return new Promise((res2,rej2)=>{
-              pool.query('select * from users where username = ?',[friend.username],(err,data)=>{
+              pool.query('select username,region,avatar,isOnline,uid from users where username = ?',[friend.username],(err,data)=>{
                 if(err){
                   console.log(err);
                   return rej2(resCode['serverErr']);

@@ -48,7 +48,7 @@ export interface SocketData {
     groups: any[]
 }
 export type userToServerMsg = {
-    avatar: string, room: string, msg: string, time: Date,id:number,likes:number,dislikes:number
+    avatar: string, room: string, msg: string, time: Date,id?:number,likes?:number,dislikes?:number,atMembers?: string[],forMsg?:string
 }
 export type ServerToUserMsg = userToServerMsg & {
     username: string
