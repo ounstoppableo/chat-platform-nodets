@@ -26,6 +26,7 @@ export enum resCode {
   success = 200,
   serverErr = 500,
   paramsErr = 404,
+  inexistenceErr = 405,
   limitErr = 201,
 }
 
@@ -35,6 +36,7 @@ export enum codeMapMsg {
   '服务器错误' = 500,
   '参数错误' = 404,
   '超过创建限制' = 201,
+  '你希望操作的对象不存在或已被删除' = 405,
 }
 
 export interface Res<T> {

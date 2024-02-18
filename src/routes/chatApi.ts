@@ -46,7 +46,7 @@ io.on('connection',(socket)=>{
   }
   //加入群聊
   socket.on('joinRoom',(groupIds)=>{
-    if(typeof groupIds==='object'&&!!groupIds.length){
+    if(groupIds instanceof Array&&groupIds.length!==0){
       groupIds.forEach((item:any)=>{
         if(socket.data.groups&&socket.data.groups.includes(item.groupId)) {
           return;
@@ -55,10 +55,6 @@ io.on('connection',(socket)=>{
         socket.join(item.groupId);
       });
     }else {
-      if(socket.data.groups&&socket.data.groups.includes(groupIds)) {
-        return;
-      }
-      socket.data.groups?socket.data.groups.push(groupIds):socket.data.groups=[groupIds];
       pool.query('select username,region,avatar,isOnline,uid from users where username = ?',[socket.data.username],(err,data)=>{
         if(err) {
           socket.emit('clientError',{msg:'操作失败，请稍后重试'});
@@ -66,6 +62,10 @@ io.on('connection',(socket)=>{
         }
         io.to(groupIds).emit('addGroup',{groupId:groupIds as string,userInfo:data[0]});
       });
+      if(socket.data.groups&&socket.data.groups.includes(groupIds)) {
+        return;
+      }
+      socket.data.groups?socket.data.groups.push(groupIds):socket.data.groups=[groupIds];
       socket.join(groupIds);
     }
   });
@@ -328,6 +328,76 @@ io.on('connection',(socket)=>{
       socket.emit('clientError',{msg:'请登录后再发言！'});
     }
   });
+
+  //删除群聊
+  socket.on('delGroup',(msg)=>{
+    if(socket.data.username){
+      if(msg.authorBy===socket.data.username){
+        pool.query('DELETE FROM groups WHERE groupId=?',[msg.groupId],(err,data)=>{
+          if(err) {
+            socket.emit('clientError',{msg:'服务器错误，请重试!'});
+            return console.log(err);
+          }
+          io.to(msg.groupId).emit('delGroup',{success:true,groupInfo:msg});
+        });
+      }else {
+        socket.emit('clientError',{msg:'权限不够!'});
+      }
+    }else {
+      socket.emit('clientError',{msg:'权限不够'});
+    }
+  });
+  //退出群聊
+  socket.on('exitGroup',(msg)=>{
+    if(socket.data.username){
+      pool.query('DELETE FROM groupRelationship WHERE groupId=? and username=?',[msg.groupId,socket.data.username],(err,data)=>{
+        if(err) {
+          socket.emit('clientError',{msg:'服务器错误，请重试!'});
+          return console.log(err);
+        }
+        io.to(msg.groupId).emit('exitGroup',{success:true,groupInfo:msg,username:socket.data.username});
+      });
+    }else {
+      socket.emit('clientError',{msg:'权限不够'});
+    }
+  });
+  //修改群名
+  socket.on('editGroupName',(msg)=>{
+    if(socket.data.username){
+      if(msg.group.authorBy===socket.data.username){
+        pool.query('update groups set groupName=? WHERE groupId=?',[msg.newName,msg.group.groupId],(err,data)=>{
+          if(err) {
+            socket.emit('clientError',{msg:'服务器错误，请重试!'});
+            return console.log(err);
+          }
+          io.to(msg.group.groupId).emit('editGroupName',{success:true,groupInfo:msg.group,newName:msg.newName});
+        });
+      }else {
+        socket.emit('clientError',{msg:'权限不够!'});
+      }
+    }else {
+      socket.emit('clientError',{msg:'权限不够'});
+    }
+  });
+  //踢出群聊
+  socket.on('kickOutGroup',(msg)=>{
+    if(socket.data.username){
+      if(msg.group.authorBy===socket.data.username){
+        pool.query('DELETE FROM groupRelationship WHERE groupId=? and username=?',[msg.group.groupId,msg.kickOutUsername],(err,data)=>{
+          if(err) {
+            socket.emit('clientError',{msg:'服务器错误，请重试!'});
+            return console.log(err);
+          }
+          io.to(msg.group.groupId).emit('kickOutGroup',{success:true,groupInfo:msg.group,kickOutUsername:msg.kickOutUsername});
+        });
+      }else {
+        socket.emit('clientError',{msg:'权限不够!'});
+      }
+    }else {
+      socket.emit('clientError',{msg:'权限不够'});
+    }
+  });
+
 
   //离开
   socket.on('disconnect',(msg)=>{

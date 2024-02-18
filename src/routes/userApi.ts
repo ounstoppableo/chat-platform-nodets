@@ -772,7 +772,7 @@ userRouter.post('/addGroupMember',(req,res:{json:(param:Res<any>)=>void})=>{
       const {username} = decoded;
       const promises = targetsUsernames.map((toName:string)=>{
         return new Promise((resolve,reject)=>{
-          pool.query('select * from systemMsg where fromName=? and toName=? and done="padding" and type="addGroupMember"',[username,toName],(err,data)=>{
+          pool.query('select * from systemMsg where fromName=? and toName=? and done="padding" and type="addGroupMember" and groupId=?',[username,toName,groupId],(err,data)=>{
             if(err){
               console.log(err);
               return reject(resCode.serverErr);
@@ -810,27 +810,24 @@ userRouter.post('/acceptJoinGroup',(req,res:{json:(param:Res<any>)=>void})=>{
       }
       const {username} = decoded;
       if(username===systemMsg.toName) {
-        new Promise((resolve,reject)=>{
-          pool.getConnection((err,connection)=>{
-            if(err) {
-              console.log(err);
-              return reject(resCode['serverErr']);
-            }
-            connection.beginTransaction((err)=>{
-              if (err) {
-                connection.release(); // 释放连接回连接池
-                console.error('Error starting transaction:', err);
+        pool.query('select * from groups where groupId=?',[systemMsg.groupId],(err,data)=>{
+          if(err) {
+            return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
+          }
+          if(data.length===0) return res.json({code:resCode.inexistenceErr,data:resData,msg:codeMapMsg[resCode.inexistenceErr]});
+          new Promise((resolve,reject)=>{
+            pool.getConnection((err,connection)=>{
+              if(err) {
+                console.log(err);
                 return reject(resCode['serverErr']);
               }
-              connection.query('update systemMsg set done="success" where msgId=?',[systemMsg.msgId],(err,data)=>{
-                if(err) {
-                  return connection.rollback(() => {
-                    connection.release(); // 释放连接回连接池
-                    console.error('Error starting transaction:', err);
-                    reject(resCode['serverErr']);
-                  });
+              connection.beginTransaction((err)=>{
+                if (err) {
+                  connection.release(); // 释放连接回连接池
+                  console.error('Error starting transaction:', err);
+                  return reject(resCode['serverErr']);
                 }
-                connection.query('insert into groupRelationship set groupId=?,username=?',[systemMsg.groupId,systemMsg.toName],(err,data)=>{
+                connection.query('update systemMsg set done="success" where msgId=?',[systemMsg.msgId],(err,data)=>{
                   if(err) {
                     return connection.rollback(() => {
                       connection.release(); // 释放连接回连接池
@@ -838,27 +835,36 @@ userRouter.post('/acceptJoinGroup',(req,res:{json:(param:Res<any>)=>void})=>{
                       reject(resCode['serverErr']);
                     });
                   }
-                  connection.commit((commitError) => {
-                    if (commitError) {
+                  connection.query('insert into groupRelationship set groupId=?,username=?',[systemMsg.groupId,systemMsg.toName],(err,data)=>{
+                    if(err) {
                       return connection.rollback(() => {
                         connection.release(); // 释放连接回连接池
-                        console.error('Error committing transaction:', commitError);
+                        console.error('Error starting transaction:', err);
                         reject(resCode['serverErr']);
                       });
                     }
-                    // 释放连接回连接池
-                    connection.release();
-                    return resolve(1);
+                    connection.commit((commitError) => {
+                      if (commitError) {
+                        return connection.rollback(() => {
+                          connection.release(); // 释放连接回连接池
+                          console.error('Error committing transaction:', commitError);
+                          reject(resCode['serverErr']);
+                        });
+                      }
+                      // 释放连接回连接池
+                      connection.release();
+                      return resolve(1);
+                    });
+                  
                   });
-                
                 });
               });
             });
+          }).then(()=>{
+            return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
+          },(err)=>{
+            return res.json({code:err,data:resData,msg:codeMapMsg[err]});
           });
-        }).then(()=>{
-          return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
-        },(err)=>{
-          return res.json({code:err,data:resData,msg:codeMapMsg[err]});
         });
       }else {
         return res.json({code:resCode.paramsErr,data:resData,msg:codeMapMsg[resCode.paramsErr]});

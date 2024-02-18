@@ -18,6 +18,10 @@ export interface ServerToClientEvents {
         room: string;
     }) => void;
     addGroup:(msg:{userInfo?:UserInfo,groupId:string,groupInfo?:Group})=>void;
+    delGroup:(msg:{success:boolean,groupInfo:Group})=>void;
+    exitGroup:(msg:{success:boolean,groupInfo:Group,username:string})=>void;
+    editGroupName:(msg:{success:boolean,groupInfo:Group,newName:string})=>void;
+    kickOutGroup:(msg:{success:boolean,groupInfo:Group,kickOutUsername:string})=>void;
     clientError: (err: { msg: string }) => void;
 }
 export interface ClientToServerEvents {
@@ -37,7 +41,11 @@ export interface ClientToServerEvents {
         dislikes: number;
         room: string;
     }) => void;
-    p2pChat:(msg: Omit<userToServerMsg,'room'|'avatar'>&{fromName:string;toName:string,fromAvatar:string,toAvatar:string})=>void
+    p2pChat:(msg: Omit<userToServerMsg,'room'|'avatar'>&{fromName:string;toName:string,fromAvatar:string,toAvatar:string})=>void;
+    delGroup:(msg:Group)=>void;
+    exitGroup:(msg:Group)=>void;
+    editGroupName:(msg:{group:Group,newName:string})=>void;
+    kickOutGroup:(msg:{group:Group,kickOutUsername:string})=>void
 }
 export interface InterServerEvents {
     disconnect: () => void;

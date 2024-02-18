@@ -18,6 +18,7 @@ export interface UserInfo {
 }
 
 export interface Group{
+    authorBy:string;
     groupName: string;
     groupId: string;
     username: string;
