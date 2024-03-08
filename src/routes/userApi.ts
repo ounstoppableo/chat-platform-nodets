@@ -168,7 +168,7 @@ userRouter.get('/userConfirm',(req,res:{json:(param:Res<any>)=>void})=>{
           }
           resData.avatar = data[0].avatar;
           resData.uid = data[0].uid;
-          pool.query('select groupId from groupRelationship where username = ? ',[username],(err,data)=>{
+          pool.query('select groupId from groupRelationship where username = ? and isShow=1',[username],(err,data)=>{
             if(err) {
               console.log(err);
               return rej(resCode.serverErr);
@@ -419,34 +419,38 @@ userRouter.post('/addFriend',(req,res:{json:(param:Res<any>)=>void})=>{
         return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
       }
       const {username} = decoded;
-      pool.query('select * from systemMsg where fromName=? and toName=? and type=\'addFriend\' or fromName=? and toName=? and type=\'addFriend\'',[username,targetUsername,targetUsername,username],(err,data)=>{
+      pool.query('select * from systemMsg where fromName=? and toName=? and type=\'addFriend\' and done=\'padding\' or fromName=? and toName=? and type=\'addFriend\' and done=\'padding\'',[username,targetUsername,targetUsername,username],(err,data)=>{
         if(err) {
           console.log(err);
           return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
         }
         if(data.length!==0){
-          if(data[0].done==='success'){
-            resData.type = 1;
-            resData.msg = '你们已经是好友！';
-            return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
-          }else if(data[0].done==='padding'){
-            resData.type = 0;
-            if(data[0].fromName===username){
-              resData.msg = '对方已经发送好友请求，请在系统消息内确认！';
-            }else {
-              resData.msg = '正在等待确认！请不要多次请求';
-            }
-            return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
+          resData.type = 0;
+          if(data[0].fromName===username){
+            resData.msg = '正在等待确认！请不要多次请求';
+          }else {
+            resData.msg = '对方已经发送好友请求，请在系统消息内确认！';
           }
+          return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
         }
-        pool.query('INSERT INTO systemMsg (fromName, toName, type) VALUES (?, ?, "addFriend")',[username,targetUsername],(err,data)=>{
+        pool.query('select * from relationship where username=? and friendName=? or username=? and friendName=?',[username,targetUsername,targetUsername,username],(err,data)=>{
           if(err) {
             console.log(err);
             return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
           }
-          resData.type = 1;
-          resData.msg = '请求发送成功！';
-          return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
+          if(data.length!==0){
+            resData.msg = '你们已经是好友啦!不要重复添加~~';
+            return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
+          }
+          pool.query('INSERT INTO systemMsg (fromName, toName, type) VALUES (?, ?, "addFriend")',[username,targetUsername],(err,data)=>{
+            if(err) {
+              console.log(err);
+              return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
+            }
+            resData.type = 1;
+            resData.msg = '请求发送成功！';
+            return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
+          });
         });
       });
     });
@@ -464,7 +468,7 @@ userRouter.get('/getSystemMsg',(req,res:{json:(param:Res<any>)=>void})=>{
         return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
       }
       const {username} = decoded;
-      pool.query('select * from systemMsg where toName = ? and done=\'padding\' or fromName=? and done=\'failed\'',[username,username],(err,data)=>{
+      pool.query('select * from systemMsg where toName = ? and done=\'padding\' or fromName=? and done=\'failed\' or toName = ? and type=\'exitGroup\' and done=\'success\' or toName = ? and type=\'kickOutGroup\' and done=\'success\' or toName = ? and type=\'delGroup\' and done=\'success\'',[username,username,username,username,username],(err,data)=>{
         if(err) {
           console.log(err);
           return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
@@ -720,7 +724,7 @@ userRouter.get('/getGroups',(req,res:{json:(param:Res<any>)=>void})=>{
         return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
       }
       const {username} = decoded;
-      pool.query('select groups.*,groups.username AS authorBy from groupRelationship,groups where groupRelationship.username=? and groupRelationship.groupId=groups.groupId',[username],(err,data)=>{
+      pool.query('select groups.*,groups.username AS authorBy from groupRelationship,groups where groupRelationship.username=? and groupRelationship.groupId=groups.groupId and groupRelationship.isShow=1',[username],(err,data)=>{
         if(err) {
           console.log(err);
           return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
@@ -901,6 +905,38 @@ userRouter.post('/rejectJoinGroup',(req,res:{json:(param:Res<any>)=>void})=>{
     return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
   }
 });
+
+//关闭对话框
+userRouter.post('/closeChat',(req,res:{json:(param:Res<any>)=>void})=>{
+  const resData:any =  {result:[]} as any;
+  const {group}:{group:Group} = req.body;
+  const token = req.headers.authorization;
+  if(token){
+    jwt.verify(token,privateKey,(err:any, decoded:any)=>{
+      if(err) {
+        return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+      }
+      const {username} = decoded;
+      if(group.type!=='p2p'){
+        return res.json({code:resCode.limitErr,data:resData,msg:codeMapMsg[resCode.limitErr]});
+      }
+      if(!group.groupName.includes(username)) {
+        return res.json({code:resCode.limitErr,data:resData,msg:codeMapMsg[resCode.limitErr]});
+      }
+      pool.query('update groupRelationship set isShow=0 where groupId=? and username=?',[group.groupId,username],(err)=>{
+        if(err) {
+          console.log(err);
+          return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
+        }
+        return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
+      });
+    });
+  }else {
+    return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+  }
+  
+});
+
 
 
 // **** Export default **** //

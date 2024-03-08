@@ -191,7 +191,13 @@ io.on('connection',(socket)=>{
             return console.log(err);
           }
           if(data.length!==0){
-            resolve(data[0]);
+            pool.query('update groupRelationship set isShow=1 where groupId=? and username=? or groupId=? and username=?',[data[0].groupId,msg.fromName,data[0].groupId,msg.toName],(err)=>{
+              if(err){
+                reject('操作失败，请稍后重试!');
+                return console.log(err);
+              }
+              resolve(data[0]);
+            });
           }else{
             const groupId = uuidv4();
             pool.getConnection((err,connection)=>{
@@ -333,12 +339,29 @@ io.on('connection',(socket)=>{
   socket.on('delGroup',(msg)=>{
     if(socket.data.username){
       if(msg.authorBy===socket.data.username){
-        pool.query('DELETE FROM groups WHERE groupId=?',[msg.groupId],(err,data)=>{
+        pool.query('select username from groupRelationship where groupId=?',[msg.groupId],(err,users)=>{
           if(err) {
             socket.emit('clientError',{msg:'服务器错误，请重试!'});
             return console.log(err);
           }
-          io.to(msg.groupId).emit('delGroup',{success:true,groupInfo:msg});
+          pool.query('DELETE FROM groups WHERE groupId=?',[msg.groupId],(err,data)=>{
+            if(err) {
+              socket.emit('clientError',{msg:'服务器错误，请重试!'});
+              return console.log(err);
+            }
+            io.to(msg.groupId).emit('delGroup',{success:true,groupInfo:msg});
+          });
+          let delGroupSystemInsertSql = 'INSERT INTO systemMsg (done,hadRead,type,fromName,toName,groupName,groupId) VALUES ';
+          for(let i=0;i<users.length;i++){
+            delGroupSystemInsertSql += `('success',0,'delGroup','${msg.authorBy}','${users[i].username}','${msg.groupName}','${msg.groupId}')`;
+            i===users.length-1?'':delGroupSystemInsertSql+=',';
+          }
+          pool.query(delGroupSystemInsertSql,(err)=>{
+            if(err) {
+              socket.emit('clientError',{msg:'服务器错误，请重试!'});
+              return console.log(err);
+            }
+          });
         });
       }else {
         socket.emit('clientError',{msg:'权限不够!'});
@@ -356,6 +379,12 @@ io.on('connection',(socket)=>{
           return console.log(err);
         }
         io.to(msg.groupId).emit('exitGroup',{success:true,groupInfo:msg,username:socket.data.username});
+      });
+      pool.query('insert into systemMsg set done=\'success\',hadRead=0,type=\'exitGroup\',fromName=?,toName=?,groupName=?,groupId=?',[socket.data.username,msg.authorBy,msg.groupName,msg.groupId],(err)=>{
+        if(err) {
+          socket.emit('clientError',{msg:'服务器错误，请重试!'});
+          return console.log(err);
+        }
       });
     }else {
       socket.emit('clientError',{msg:'权限不够'});
@@ -389,6 +418,12 @@ io.on('connection',(socket)=>{
             return console.log(err);
           }
           io.to(msg.group.groupId).emit('kickOutGroup',{success:true,groupInfo:msg.group,kickOutUsername:msg.kickOutUsername});
+        });
+        pool.query('insert into systemMsg set done=\'success\',hadRead=0,type=\'kickOutGroup\',fromName=?,toName=?,groupName=?,groupId=?',[socket.data.username,msg.kickOutUsername,msg.group.groupName,msg.group.groupId],(err)=>{
+          if(err) {
+            socket.emit('clientError',{msg:'服务器错误，请重试!'});
+            return console.log(err);
+          }
         });
       }else {
         socket.emit('clientError',{msg:'权限不够!'});
