@@ -289,7 +289,7 @@ userRouter.get('/groupMsg/:groupId',(req,res:{json:(param:Res<ServerToUserMsg[]>
           });
         }).then((avatar:any)=>{
           const temp = {
-            id:item.id,avatar:avatar.avatar,username:item.username,room:item.groupId,msg:item.text,time:item.time,timestamp:item.timestamp,likes:item.likes,dislikes:item.dislikes,
+            id:item.id,avatar:avatar.avatar,username:item.username,room:item.groupId,msg:item.text,time:item.time,timestamp:item.timestamp,likes:item.likes,dislikes:item.dislikes,type:item.type,src:item.src,
           };
           resData[index] = temp;
         });
@@ -326,15 +326,16 @@ userRouter.get('/totalMsg/:username?',(req,res:{json:(param:Res<TotalMsg>)=>void
               console.log(err);
               return rej(resCode['serverErr']);
             }
-            const promises = data.map((item:{ groupId: string, username: string })=>{
+            const promises = data.map((item:{ groupId: string, username: string,isShowMsg:string })=>{
               return new Promise((res2,rej2)=>{
                 pool.query('select * from gmessage where groupId = ?',[item.groupId],(err,data)=>{
                   if(err) {
                     console.log(err);
                     return rej2(resCode['serverErr']);
                   }
-                  resData[item.groupId] = data.map((item2:any)=>({
-                    id:item2.id,username:item2.username,room:item2.groupId,msg:item2.text,time:item2.time,timestamp:item2.timestamp,likes:item2.likes,dislikes:item2.dislikes,atMembers:JSON.parse(item2.atMembers),forMsg:item2.forMsg,
+                  const isShowMsg:string[] = JSON.parse(item.isShowMsg);
+                  resData[item.groupId] = data.filter((msg:any)=>!isShowMsg.includes(msg.id+'')).map((item2:any)=>({
+                    id:item2.id,username:item2.username,room:item2.groupId,msg:item2.text,time:item2.time,timestamp:item2.timestamp,likes:item2.likes,dislikes:item2.dislikes,atMembers:JSON.parse(item2.atMembers),forMsg:item2.forMsg,type:item2.type,src:item2.src,
                   }));
                   const promises2 = resData[item.groupId].map((item3:any,index:number)=>{
                     return new Promise((res3,rej3)=>{
@@ -379,7 +380,7 @@ userRouter.get('/totalMsg/:username?',(req,res:{json:(param:Res<TotalMsg>)=>void
           return rej(err);
         }
         resData['1'] = data.map((item:any)=>({
-          id:item.id,username:item.username,room:item.groupId,msg:item.text,time:item.time,timestamp:item.timestamp,likes:item.likes,dislikes:item.dislikes,atMembers:JSON.parse(item.atMembers),forMsg:item.forMsg,
+          id:item.id,username:item.username,room:item.groupId,msg:item.text,time:item.time,timestamp:item.timestamp,likes:item.likes,dislikes:item.dislikes,atMembers:JSON.parse(item.atMembers),forMsg:item.forMsg,type:item.type,src:item.src,
         }));
         const promises = resData['1'].map((item2:any,index:number)=>{
           return new Promise((res2,rej2)=>{
@@ -937,6 +938,39 @@ userRouter.post('/closeChat',(req,res:{json:(param:Res<any>)=>void})=>{
   
 });
 
+//删除消息
+userRouter.get('/delMsg',(req,res:{json:(param:Res<any>)=>void})=>{
+  const resData:any =  {result:[]} as any;
+  const {msgId,groupId} = req.query;
+  const token = req.headers.authorization;
+  if(token){
+    jwt.verify(token,privateKey,(err:any, decoded:any)=>{
+      if(err) {
+        return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+      }
+      const {username} = decoded;
+      pool.query('select isShowMsg from groupRelationship where username =? and groupId=?',[username,groupId],(err,data)=>{
+        if(err) {
+          console.log(err);
+          return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
+        }
+        resData.groupId = groupId;
+        resData.msgId = msgId;
+        const temp  =  JSON.parse(data[0].isShowMsg);
+        temp.includes(msgId)?null:temp.push(msgId);
+        pool.query('update groupRelationship set isShowMsg =? where username =? and groupId=?',[JSON.stringify(temp),username,groupId],(err)=>{
+          if(err) {
+            console.log(err);
+            return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
+          }
+          return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
+        });
+      });
+    });
+  }else {
+    return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+  }
+});
 
 
 // **** Export default **** //

@@ -85,7 +85,7 @@ io.on('connection',(socket)=>{
             connection.release();
             return  console.log(err);
           }
-          connection.query('insert gmessage set username=?,time=?,text=?,timestamp=?,likes=?,dislikes=?,groupId=?,atMembers=?,forMsg=?',[socket.data.username,dayjs(msg.time).format('YYYY-MM-DD HH:mm:ss'),msg.msg,dayjs(msg.time).unix(),0,0,msg.room,JSON.stringify(msg.atMembers),msg.forMsg],(err,data)=>{
+          connection.query('insert gmessage set username=?,time=?,text=?,timestamp=?,likes=?,dislikes=?,groupId=?,atMembers=?,forMsg=?,type=?,src=?',[socket.data.username,dayjs(msg.time).format('YYYY-MM-DD HH:mm:ss'),msg.msg,dayjs(msg.time).unix(),0,0,msg.room,JSON.stringify(msg.atMembers),msg.forMsg,msg.type||'default',msg.src||''],(err,data)=>{
             if(err) {
               return  connection.rollback(() => {
                 socket.emit('clientError',{msg:'操作失败，请稍后重试'});
@@ -111,7 +111,7 @@ io.on('connection',(socket)=>{
                 }
                 // 释放连接回连接池
                 connection.release();
-                io.to(msg.room).emit('toRoomClient',Object.assign({username:socket.data.username,id:data.insertId,likes:0,dislikes:0,forMsg:msg.forMsg},msg));
+                io.to(msg.room).emit('toRoomClient',Object.assign({username:socket.data.username,id:data.insertId,likes:0,dislikes:0,forMsg:msg.forMsg,type:msg.type||'default',src:msg.src||''},msg));
               });
             });
           });
@@ -267,7 +267,7 @@ io.on('connection',(socket)=>{
             });
           }
         });
-      }).then((res)=>{
+      }).then((res:any)=>{
         io.sockets.sockets.forEach((item:any)=>{
           if(item.data.username===res.username||item.data.username===res.toUsername){ 
             if(!item.data.groups || !item.data.groups.includes(res.groupId)) {
@@ -290,7 +290,7 @@ io.on('connection',(socket)=>{
                 connection.release();
                 return  console.log(err);
               }
-              connection.query('insert into gmessage set username=?,time=?,text=?,timestamp=?,groupId=?',[msg.fromName,dayjs(msg.time).format('YYYY-MM-DD HH:mm:ss'),msg.msg,dayjs(msg.time).unix(),res.groupId],(err,data)=>{
+              connection.query('insert into gmessage set username=?,time=?,text=?,timestamp=?,groupId=?,type=?,src=?',[msg.fromName,dayjs(msg.time).format('YYYY-MM-DD HH:mm:ss'),msg.msg,dayjs(msg.time).unix(),res.groupId,msg.type||'default',msg.src||''],(err,data)=>{
                 if(err) {
                   return  connection.rollback(() => {
                     reject('操作失败，请稍后重试');
@@ -323,7 +323,7 @@ io.on('connection',(socket)=>{
             });
           });
         }).then((data:any)=>{
-          io.to(res.groupId).emit('toRoomClient',{username:msg.fromName,avatar:msg.fromAvatar,room:res.groupId,msg:msg.msg,time:msg.time,id:data.insertId,likes:0,dislikes:0});
+          io.to(res.groupId).emit('toRoomClient',{username:msg.fromName,avatar:msg.fromAvatar,room:res.groupId,msg:msg.msg,time:msg.time,id:data.insertId,likes:0,dislikes:0,type:msg.type||'default',src:msg.src||''});
         },(err)=>{
           socket.emit('clientError',{msg:err});
         });
@@ -433,6 +433,29 @@ io.on('connection',(socket)=>{
     }
   });
 
+  //撤回消息
+  socket.on('withdrawMsg',(msg)=>{
+    if(socket.data.username){
+      if(msg.username===socket.data.username){
+        const time = Date.now();
+        if(time/1000-msg.timestamp>60*2){
+          socket.emit('clientError',{msg:'超过2分钟就不能撤回了o~~'});
+        }else {
+          pool.query('update gmessage set type=\'withdraw\' where id = ?',[msg.id],(err,data)=>{
+            if(err) {
+              socket.emit('clientError',{msg:'服务器错误，请重试!'});
+              return console.log(err);
+            }
+            io.to(msg.room).emit('withdrawMsg',Object.assign(msg,{type:'withdraw'}));
+          });
+        }
+      }else {
+        socket.emit('clientError',{msg:'权限不够!'});
+      }
+    }else {
+      socket.emit('clientError',{msg:'权限不够'});
+    }
+  });
 
   //离开
   socket.on('disconnect',(msg)=>{

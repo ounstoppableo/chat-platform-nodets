@@ -23,6 +23,7 @@ export interface ServerToClientEvents {
     editGroupName:(msg:{success:boolean,groupInfo:Group,newName:string})=>void;
     kickOutGroup:(msg:{success:boolean,groupInfo:Group,kickOutUsername:string})=>void;
     clientError: (err: { msg: string }) => void;
+    withdrawMsg: (msg:ServerToUserMsg&{timestamp:number})=>void
 }
 export interface ClientToServerEvents {
     joinRoom: (groupIds: any[]|string) => void,
@@ -45,7 +46,8 @@ export interface ClientToServerEvents {
     delGroup:(msg:Group)=>void;
     exitGroup:(msg:Group)=>void;
     editGroupName:(msg:{group:Group,newName:string})=>void;
-    kickOutGroup:(msg:{group:Group,kickOutUsername:string})=>void
+    kickOutGroup:(msg:{group:Group,kickOutUsername:string})=>void;
+    withdrawMsg: (msg:ServerToUserMsg&{timestamp:number})=>void
 }
 export interface InterServerEvents {
     disconnect: () => void;
@@ -56,7 +58,7 @@ export interface SocketData {
     groups: any[]
 }
 export type userToServerMsg = {
-    avatar: string, room: string, msg: string, time: Date,id?:number,likes?:number,dislikes?:number,atMembers?: string[],forMsg?:string
+    avatar: string, room: string, msg: string, time: Date,id?:number,likes?:number,dislikes?:number,atMembers?: string[],forMsg?:string,type?:string;src?:string
 }
 export type ServerToUserMsg = userToServerMsg & {
     username: string
