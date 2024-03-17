@@ -277,11 +277,9 @@ io.on('connection',(socket)=>{
       }).then((res:any)=>{
         io.sockets.sockets.forEach((item:any)=>{
           if(item.data.username===res.username||item.data.username===res.toUsername){ 
-            if(!item.data.groups || !item.data.groups.includes(res.groupId)) {
-              item.join(res.groupId);
-              item.data.groups?item.data.groups.push(res.groupId):item.data.groups=[res.groupId];
-              item.emit('addGroup',{groupId:res.groupId,groupInfo:res});
-            }
+            item.join(res.groupId);
+            item.data.groups?item.data.groups.push(res.groupId):item.data.groups=[res.groupId];
+            item.emit('addGroup',{groupId:res.groupId,groupInfo:res});
           }
         });
 
@@ -530,58 +528,65 @@ io.on('connection',(socket)=>{
       const {msgId,fromName,toName} = msg;
       if(socket.data.username===toName){
         const resData = {} as any;
-        new Promise((resolve,reject)=>{
-          pool.getConnection((err,connection)=>{
-            if(err) {
-              return reject(err);
-            }
-            connection.beginTransaction((err)=>{
-              if (err) {
-                connection.release(); // 释放连接回连接池
+        pool.query('select * from relationship where username=? and friendName=? or username=? and friendName=?',[fromName,toName,toName,fromName],(err,data)=>{
+          if(err) {
+            console.log(err);
+            return socket.emit('clientError',{msg:'服务器错误，请重试!'});
+          }
+          if(data.length!==0) return socket.emit('clientError',{msg:'不要重复操作！'});
+          new Promise((resolve,reject)=>{
+            pool.getConnection((err,connection)=>{
+              if(err) {
                 return reject(err);
               }
-              connection.query('insert into relationship set username=?,friendName=?',[fromName,toName],(err,data)=>{
+              connection.beginTransaction((err)=>{
                 if (err) {
-                  return connection.rollback(() => {
-                    connection.release(); // 释放连接回连接池
-                    reject(err);
-                  });
+                  connection.release(); // 释放连接回连接池
+                  return reject(err);
                 }
-                connection.query('update systemMsg set done=\'success\' where msgId=?',[msgId],(err,data)=>{
-                  if(err) {
+                connection.query('insert into relationship set username=?,friendName=?',[fromName,toName],(err,data)=>{
+                  if (err) {
                     return connection.rollback(() => {
                       connection.release(); // 释放连接回连接池
                       reject(err);
                     });
                   }
-                  connection.commit((commitError) => {
-                    if (commitError) {
+                  connection.query('update systemMsg set done=\'success\' where msgId=?',[msgId],(err,data)=>{
+                    if(err) {
                       return connection.rollback(() => {
                         connection.release(); // 释放连接回连接池
                         reject(err);
                       });
                     }
-                    // 释放连接回连接池
-                    connection.release();
-                    return resolve(1);
+                    connection.commit((commitError) => {
+                      if (commitError) {
+                        return connection.rollback(() => {
+                          connection.release(); // 释放连接回连接池
+                          reject(err);
+                        });
+                      }
+                      // 释放连接回连接池
+                      connection.release();
+                      return resolve(1);
+                    });
                   });
                 });
               });
             });
+          }).then(()=>{
+            resData.msgId = msgId;
+            resData.toName = toName;
+            resData.fromName = fromName;
+            io.sockets.sockets.forEach(item=>{
+              if(item.data.username===fromName){
+                item.emit('acceptAddFriend',resData);
+              }
+            });
+            return socket.emit('acceptAddFriend',resData);
+          }).catch((err)=>{
+            console.error('Error committing transaction:', err);
+            return socket.emit('clientError',{msg:'服务器错误，请重试!'});
           });
-        }).then(()=>{
-          resData.msgId = msgId;
-          resData.toName = toName;
-          resData.fromName = fromName;
-          io.sockets.sockets.forEach(item=>{
-            if(item.data.username===fromName){
-              item.emit('acceptAddFriend',resData);
-            }
-          });
-          return socket.emit('acceptAddFriend',resData);
-        }).catch((err)=>{
-          console.error('Error committing transaction:', err);
-          return socket.emit('clientError',{msg:'服务器错误，请重试!'});
         });
       }else {
         socket.emit('clientError',{msg:'权限不够'});
