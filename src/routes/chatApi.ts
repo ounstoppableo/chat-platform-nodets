@@ -358,14 +358,31 @@ io.on('connection',(socket)=>{
           });
           let delGroupSystemInsertSql = 'INSERT INTO systemMsg (done,hadRead,type,fromName,toName,groupName,groupId) VALUES ';
           for(let i=0;i<users.length;i++){
+            if(users[i].username===msg.authorBy) continue;
             delGroupSystemInsertSql += `('success',0,'delGroup','${msg.authorBy}','${users[i].username}','${msg.groupName}','${msg.groupId}')`;
             i===users.length-1?'':delGroupSystemInsertSql+=',';
           }
-          pool.query(delGroupSystemInsertSql,(err)=>{
+          pool.query(delGroupSystemInsertSql,(err,data)=>{
             if(err) {
               socket.emit('clientError',{msg:'服务器错误，请重试!'});
               return console.log(err);
             }
+            const  userMapMsgId = {} as any;
+            let msgId = data.insertId;
+            for(let i=0;i<users.length;i++){
+              if(users[i].username===msg.authorBy) continue;
+              userMapMsgId[users[i].username] = msgId;
+              msgId++;
+            }
+            io.sockets.sockets.forEach(item=>{
+              if(users.find((user:any)=>item.data.username===user.username&&user.username!==msg.authorBy)) {
+                item.emit('delGroup',{
+                  systemMsg:{
+                    done:'success',hadRead:false,type:'delGroup',fromName:msg.authorBy,toName:item.data.username,groupName:msg.groupName,groupId:msg.groupId,msgId:userMapMsgId[item.data.username],
+                  },
+                });
+              }
+            });
           });
         });
       }else {
@@ -385,11 +402,27 @@ io.on('connection',(socket)=>{
         }
         io.to(msg.groupId).emit('exitGroup',{success:true,groupInfo:msg,username:socket.data.username});
       });
-      pool.query('insert into systemMsg set done=\'success\',hadRead=0,type=\'exitGroup\',fromName=?,toName=?,groupName=?,groupId=?',[socket.data.username,msg.authorBy,msg.groupName,msg.groupId],(err)=>{
+      pool.query('insert into systemMsg set done=\'success\',hadRead=0,type=\'exitGroup\',fromName=?,toName=?,groupName=?,groupId=?',[socket.data.username,msg.authorBy,msg.groupName,msg.groupId],(err,data)=>{
         if(err) {
           socket.emit('clientError',{msg:'服务器错误，请重试!'});
           return console.log(err);
         }
+        io.sockets.sockets.forEach((item:any)=>{
+          if(item.data.username===msg.authorBy){
+            item.emit('exitGroup',{
+              systemMsg:{
+                done:'success',
+                hadRead:0,
+                type:'exitGroup',
+                fromName:socket.data.username,
+                toName:msg.authorBy,
+                groupName:msg.groupName,
+                groupId:msg.groupId,
+                msgId:data.insertId,
+              },
+            });
+          }
+        });
       });
     }else {
       socket.emit('clientError',{msg:'权限不够'});
@@ -424,11 +457,27 @@ io.on('connection',(socket)=>{
           }
           io.to(msg.group.groupId).emit('kickOutGroup',{success:true,groupInfo:msg.group,kickOutUsername:msg.kickOutUsername});
         });
-        pool.query('insert into systemMsg set done=\'success\',hadRead=0,type=\'kickOutGroup\',fromName=?,toName=?,groupName=?,groupId=?',[socket.data.username,msg.kickOutUsername,msg.group.groupName,msg.group.groupId],(err)=>{
+        pool.query('insert into systemMsg set done=\'success\',hadRead=0,type=\'kickOutGroup\',fromName=?,toName=?,groupName=?,groupId=?',[socket.data.username,msg.kickOutUsername,msg.group.groupName,msg.group.groupId],(err,data)=>{
           if(err) {
             socket.emit('clientError',{msg:'服务器错误，请重试!'});
             return console.log(err);
           }
+          io.sockets.sockets.forEach((item:any)=>{
+            if(item.data.username===msg.kickOutUsername){
+              item.emit('kickOutGroup',{
+                systemMsg:{
+                  done:'success',
+                  hadRead:0,
+                  type:'kickOutGroup',
+                  fromName:socket.data.username,
+                  toName:msg.kickOutUsername,
+                  groupName:msg.group.groupName,
+                  groupId:msg.group.groupId,
+                  msgId:data.insertId,
+                },
+              });
+            }
+          });
         });
       }else {
         socket.emit('clientError',{msg:'权限不够!'});

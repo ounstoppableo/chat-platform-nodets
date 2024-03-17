@@ -18,10 +18,10 @@ export interface ServerToClientEvents {
         room: string;
     }) => void;
     addGroup:(msg:{userInfo?:UserInfo,groupId:string,groupInfo?:Group})=>void;
-    delGroup:(msg:{success:boolean,groupInfo:Group})=>void;
-    exitGroup:(msg:{success:boolean,groupInfo:Group,username:string})=>void;
+    delGroup:(msg:{success?:boolean,groupInfo?:Group,systemMsg?:SystemMsg})=>void;
+    exitGroup:(msg:{success?:boolean,groupInfo?:Group,username?:string,systemMsg?:SystemMsg})=>void;
     editGroupName:(msg:{success:boolean,groupInfo:Group,newName:string})=>void;
-    kickOutGroup:(msg:{success:boolean,groupInfo:Group,kickOutUsername:string})=>void;
+    kickOutGroup:(msg:{success?:boolean,groupInfo?:Group,kickOutUsername?:string,systemMsg?:SystemMsg})=>void;
     clientError: (err: { msg: string }) => void;
     withdrawMsg: (msg:ServerToUserMsg&{timestamp:number})=>void;
     addFriend: (msg:{type?:number,msg?:string,data?:any})=>void;
