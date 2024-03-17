@@ -46,28 +46,35 @@ io.on('connection',(socket)=>{
   }
   //加入群聊
   socket.on('joinRoom',(groupIds)=>{
-    if(groupIds instanceof Array&&groupIds.length!==0){
-      groupIds.forEach((item:any)=>{
-        if(socket.data.groups&&socket.data.groups.includes(item.groupId)) {
-          return;
-        }
-        socket.data.groups?socket.data.groups.push(item.groupId):socket.data.groups=[item.groupId];
-        socket.join(item.groupId);
-      });
+    if(!socket.data.username){
+      socket.join('1');
     }else {
       pool.query('select username,region,avatar,isOnline,uid from users where username = ?',[socket.data.username],(err,data)=>{
         if(err) {
           socket.emit('clientError',{msg:'操作失败，请稍后重试'});
           return console.log(err);
         }
-        io.to(groupIds).emit('addGroup',{groupId:groupIds as string,userInfo:data[0]});
+        if(groupIds instanceof Array&&groupIds.length!==0){
+          groupIds.forEach((item:any)=>{
+            if(socket.data.groups&&socket.data.groups.includes(item.groupId)) {
+              return;
+            }
+            socket.data.groups?socket.data.groups.push(item.groupId):socket.data.groups=[item.groupId];
+            socket.join(item.groupId);
+            io.to(item.groupId).emit('joinRoom',{groupId:item.groupId as string,userInfo:data[0]});
+          });
+        }else {
+          if(socket.data.groups&&socket.data.groups.includes(groupIds)) {
+            return;
+          }
+          socket.data.groups?socket.data.groups.push(groupIds):socket.data.groups=[groupIds];
+          socket.join(groupIds);
+          io.to(groupIds).emit('addGroup',{groupId:groupIds as string,userInfo:data[0]});
+        }
       });
-      if(socket.data.groups&&socket.data.groups.includes(groupIds)) {
-        return;
-      }
-      socket.data.groups?socket.data.groups.push(groupIds):socket.data.groups=[groupIds];
-      socket.join(groupIds);
+
     }
+ 
   });
   //接收客户端的消息(群聊天)
   socket.on('msgToServer',(msg)=>{
@@ -85,7 +92,7 @@ io.on('connection',(socket)=>{
             connection.release();
             return  console.log(err);
           }
-          connection.query('insert gmessage set username=?,time=?,text=?,timestamp=?,likes=?,dislikes=?,groupId=?,atMembers=?,forMsg=?,type=?,src=?',[socket.data.username,dayjs(msg.time).format('YYYY-MM-DD HH:mm:ss'),msg.msg,dayjs(msg.time).unix(),0,0,msg.room,JSON.stringify(msg.atMembers),msg.forMsg,msg.type||'default',msg.src||''],(err,data)=>{
+          connection.query('insert gmessage set username=?,time=?,text=?,timestamp=?,likes=?,dislikes=?,groupId=?,atMembers=?,forMsg=?,type=?,src=?,fileName=?,fileSize=?',[socket.data.username,dayjs(msg.time).format('YYYY-MM-DD HH:mm:ss'),msg.msg,dayjs(msg.time).unix(),0,0,msg.room,JSON.stringify(msg.atMembers),msg.forMsg,msg.type||'default',msg.src||'',msg.fileName||'',msg.fileSize||''],(err,data)=>{
             if(err) {
               return  connection.rollback(() => {
                 socket.emit('clientError',{msg:'操作失败，请稍后重试'});
@@ -111,7 +118,7 @@ io.on('connection',(socket)=>{
                 }
                 // 释放连接回连接池
                 connection.release();
-                io.to(msg.room).emit('toRoomClient',Object.assign({username:socket.data.username,id:data.insertId,likes:0,dislikes:0,forMsg:msg.forMsg,type:msg.type||'default',src:msg.src||''},msg));
+                io.to(msg.room).emit('toRoomClient',Object.assign({username:socket.data.username,id:data.insertId,likes:0,dislikes:0,forMsg:msg.forMsg,type:msg.type||'default',src:msg.src||'',fileName:msg.fileName||'',fileSize:msg.fileSize||''},msg));
               });
             });
           });
@@ -290,7 +297,7 @@ io.on('connection',(socket)=>{
                 connection.release();
                 return  console.log(err);
               }
-              connection.query('insert into gmessage set username=?,time=?,text=?,timestamp=?,groupId=?,type=?,src=?',[msg.fromName,dayjs(msg.time).format('YYYY-MM-DD HH:mm:ss'),msg.msg,dayjs(msg.time).unix(),res.groupId,msg.type||'default',msg.src||''],(err,data)=>{
+              connection.query('insert into gmessage set username=?,time=?,text=?,timestamp=?,groupId=?,type=?,src=?,fileName=?,fileSize=?',[msg.fromName,dayjs(msg.time).format('YYYY-MM-DD HH:mm:ss'),msg.msg,dayjs(msg.time).unix(),res.groupId,msg.type||'default',msg.src||'',msg.fileName||'',msg.fileSize||''],(err,data)=>{
                 if(err) {
                   return  connection.rollback(() => {
                     reject('操作失败，请稍后重试');
@@ -323,7 +330,7 @@ io.on('connection',(socket)=>{
             });
           });
         }).then((data:any)=>{
-          io.to(res.groupId).emit('toRoomClient',{username:msg.fromName,avatar:msg.fromAvatar,room:res.groupId,msg:msg.msg,time:msg.time,id:data.insertId,likes:0,dislikes:0,type:msg.type||'default',src:msg.src||''});
+          io.to(res.groupId).emit('toRoomClient',{username:msg.fromName,avatar:msg.fromAvatar,room:res.groupId,msg:msg.msg,time:msg.time,id:data.insertId,likes:0,dislikes:0,type:msg.type||'default',src:msg.src||'',fileName:msg.fileName||'',fileSize:msg.fileSize||''});
         },(err)=>{
           socket.emit('clientError',{msg:err});
         });
@@ -449,6 +456,230 @@ io.on('connection',(socket)=>{
             io.to(msg.room).emit('withdrawMsg',Object.assign(msg,{type:'withdraw'}));
           });
         }
+      }else {
+        socket.emit('clientError',{msg:'权限不够!'});
+      }
+    }else {
+      socket.emit('clientError',{msg:'权限不够'});
+    }
+  });
+
+  //添加好友
+  socket.on('addFriend',(msg)=>{
+    if(socket.data.username){
+      const {targetUsername} = msg;
+      const resData:any =  {} as any;
+      const username = socket.data.username;
+      pool.query('select * from systemMsg where fromName=? and toName=? and type=\'addFriend\' and done=\'padding\' or fromName=? and toName=? and type=\'addFriend\' and done=\'padding\'',[username,targetUsername,targetUsername,username],(err,data)=>{
+        if(err) {
+          socket.emit('clientError',{msg:'服务器错误，请重试!'});
+          return console.log(err);
+        }
+        if(data.length!==0){
+          resData.type = 0;
+          if(data[0].fromName===username){
+            resData.msg = '正在等待确认！请不要多次请求';
+          }else {
+            resData.msg = '对方已经发送好友请求，请在系统消息内确认！';
+          }
+          return socket.emit('addFriend',resData);
+        }
+        pool.query('select * from relationship where username=? and friendName=? or username=? and friendName=?',[username,targetUsername,targetUsername,username],(err,data)=>{
+          if(err) {
+            socket.emit('clientError',{msg:'服务器错误，请重试!'});
+            return console.log(err);
+          }
+          if(data.length!==0){
+            resData.type = 0;
+            resData.msg = '你们已经是好友啦!不要重复添加~~';
+            return socket.emit('addFriend',resData);
+          }
+          pool.query('INSERT INTO systemMsg (fromName, toName, type) VALUES (?, ?, "addFriend")',[username,targetUsername],(err,data)=>{
+            if(err) {
+              socket.emit('clientError',{msg:'服务器错误，请重试!'});
+              return console.log(err);
+            }
+            resData.type = 1;
+            resData.msg = '请求发送成功！';
+            io.sockets.sockets.forEach(item=>{
+              if(item.data.username===targetUsername){
+                const foTagetUserdata = {
+                  fromName:username, 
+                  toName:targetUsername, 
+                  type:'addFriend',
+                  msgId: data.insertId,
+                  done: 'padding',
+                  hadRead: 0,
+                  groupName: null,
+                  groupId: null,
+                };
+                item.emit('addFriend',{data:foTagetUserdata});
+              }
+            });
+            return socket.emit('addFriend',resData);
+          });
+        });
+      });
+    }else {
+      socket.emit('clientError',{msg:'权限不够'});
+    }
+  });
+  //同意添加
+  socket.on('acceptAddFriend',(msg)=>{
+    if(socket.data.username){
+      const {msgId,fromName,toName} = msg;
+      if(socket.data.username===toName){
+        const resData = {} as any;
+        new Promise((resolve,reject)=>{
+          pool.getConnection((err,connection)=>{
+            if(err) {
+              return reject(err);
+            }
+            connection.beginTransaction((err)=>{
+              if (err) {
+                connection.release(); // 释放连接回连接池
+                return reject(err);
+              }
+              connection.query('insert into relationship set username=?,friendName=?',[fromName,toName],(err,data)=>{
+                if (err) {
+                  return connection.rollback(() => {
+                    connection.release(); // 释放连接回连接池
+                    reject(err);
+                  });
+                }
+                connection.query('update systemMsg set done=\'success\' where msgId=?',[msgId],(err,data)=>{
+                  if(err) {
+                    return connection.rollback(() => {
+                      connection.release(); // 释放连接回连接池
+                      reject(err);
+                    });
+                  }
+                  connection.commit((commitError) => {
+                    if (commitError) {
+                      return connection.rollback(() => {
+                        connection.release(); // 释放连接回连接池
+                        reject(err);
+                      });
+                    }
+                    // 释放连接回连接池
+                    connection.release();
+                    return resolve(1);
+                  });
+                });
+              });
+            });
+          });
+        }).then(()=>{
+          resData.msgId = msgId;
+          resData.toName = toName;
+          resData.fromName = fromName;
+          io.sockets.sockets.forEach(item=>{
+            if(item.data.username===fromName){
+              item.emit('acceptAddFriend',resData);
+            }
+          });
+          return socket.emit('acceptAddFriend',resData);
+        }).catch((err)=>{
+          console.error('Error committing transaction:', err);
+          return socket.emit('clientError',{msg:'服务器错误，请重试!'});
+        });
+      }else {
+        socket.emit('clientError',{msg:'权限不够'});
+      }
+    }else {
+      socket.emit('clientError',{msg:'权限不够'});
+    }
+
+  });
+  //拒绝添加好友
+  socket.on('rejectAddFriend',(msg)=>{
+    if(socket.data.username){
+      const {msgId,fromName,toName} = msg;
+      if(socket.data.username===toName){
+        pool.query('update systemMsg set done=\'failed\',hadRead=0 where msgId=?',[msgId],(err,data)=>{
+          if(err){
+            console.log(err);
+            return socket.emit('clientError',{msg:'服务器错误，请重试!'});
+          }
+          io.sockets.sockets.forEach(item=>{
+            if(item.data.username===fromName){
+              const toFromUserData = {
+                msgId,fromName,toName,done:'failed',hadRead:0,type:'addFriend',
+              };
+              item.emit('rejectAddFriend',{data:toFromUserData});
+            }
+          });
+          return socket.emit('rejectAddFriend',{msgId,fromName,toName});
+        });
+      }else {
+        socket.emit('clientError',{msg:'权限不够'});
+      }
+    }else {
+      socket.emit('clientError',{msg:'权限不够'});
+    }
+  });
+
+  //添加群成员
+  socket.on('addGroupMember',(msg)=>{
+    if(socket.data.username){
+      const {groupId,groupName,targetsUsernames,authorBy} = msg;
+      const {username} = socket.data;
+      const resData = {} as any;
+      if(username===authorBy){
+        const promises = targetsUsernames.map((toName:string)=>{
+          return new Promise((resolve,reject)=>{
+            pool.query('select * from systemMsg where fromName=? and toName=? and done="padding" and type="addGroupMember" and groupId=?',[username,toName,groupId],(err,data)=>{
+              if(err){
+                return reject(err);
+              }
+              if(data.length!==0) return resolve(data[0]);
+              pool.query('insert into systemMsg set fromName=?,toName=?,type="addGroupMember",done="padding",groupName=?,groupId=?',[username,toName,groupName,groupId],(err,data)=>{
+                if(err){
+                  return reject(err);
+                }
+                resolve(data);
+              });
+            });
+          });
+        });
+        Promise.all(promises).then((res:any)=>{
+          io.sockets.sockets.forEach(item=>{
+            if(targetsUsernames.includes(item.data.username)){
+              const info = res[targetsUsernames.findIndex(name=>name===item.data.username)];
+              item.emit('addGroupMember',{
+                data: {fromName:username,toName:item.data.username,type:'addGroupMember',done:'padding',groupName:groupName,groupId:groupId,msgId:info.msgId||info.insertId,hadRead:false},
+              });
+            }
+          });
+          socket.emit('addGroupMember',resData);
+        },(err)=>{
+          console.log(err);
+          return socket.emit('clientError',{msg:'服务器错误，请重试!'});
+        });
+      }else{
+        socket.emit('clientError',{msg:'权限不够'});
+      }
+    }else{
+      socket.emit('clientError',{msg:'权限不够'});
+    }
+  });
+  //拒绝加群
+  socket.on('rejectJoinGroup',(msg)=>{
+    if(socket.data.username){
+      const {systemMsg} = msg;
+      if(systemMsg.toName===socket.data.username){
+        pool.query('update systemMsg set done=\'failed\',hadRead=0 where msgId=?',[systemMsg.msgId],(err,data)=>{
+          if(err) {
+            console.log(err);
+            return socket.emit('clientError',{msg:'服务器错误，请重试!'});
+          }
+          io.sockets.sockets.forEach(item=>{
+            if(item.data.username===systemMsg.fromName){
+              item.emit('rejectJoinGroup',{systemMsg:{...systemMsg,done:'failed'}});
+            }
+          });
+          return socket.emit('rejectJoinGroup',{systemMsg:{...systemMsg,done:'failed'}});
+        });
       }else {
         socket.emit('clientError',{msg:'权限不够!'});
       }

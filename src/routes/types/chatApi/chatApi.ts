@@ -23,7 +23,13 @@ export interface ServerToClientEvents {
     editGroupName:(msg:{success:boolean,groupInfo:Group,newName:string})=>void;
     kickOutGroup:(msg:{success:boolean,groupInfo:Group,kickOutUsername:string})=>void;
     clientError: (err: { msg: string }) => void;
-    withdrawMsg: (msg:ServerToUserMsg&{timestamp:number})=>void
+    withdrawMsg: (msg:ServerToUserMsg&{timestamp:number})=>void;
+    addFriend: (msg:{type?:number,msg?:string,data?:any})=>void;
+    acceptAddFriend: (msg:{msgId:number,fromName:string,toName:string})=>void;
+    rejectAddFriend: (msg:{msgId?:number,fromName?:string,toName?:string,data?:any})=>void;
+    addGroupMember: (msg:{data:SystemMsg})=>void;
+    rejectJoinGroup: (msg:{systemMsg:SystemMsg})=>void;
+    joinRoom: (msg:{userInfo:UserInfo,groupId:string})=>void;
 }
 export interface ClientToServerEvents {
     joinRoom: (groupIds: any[]|string) => void,
@@ -47,7 +53,12 @@ export interface ClientToServerEvents {
     exitGroup:(msg:Group)=>void;
     editGroupName:(msg:{group:Group,newName:string})=>void;
     kickOutGroup:(msg:{group:Group,kickOutUsername:string})=>void;
-    withdrawMsg: (msg:ServerToUserMsg&{timestamp:number})=>void
+    withdrawMsg: (msg:ServerToUserMsg&{timestamp:number})=>void;
+    addFriend: (msg:{targetUsername:string})=>void;
+    acceptAddFriend: (msg:{msgId:number,fromName:string,toName:string})=>void;
+    rejectAddFriend: (msg:{msgId:number,fromName:string,toName:string})=>void;
+    addGroupMember: (msg:{groupId:string,groupName:string,targetsUsernames:string[],authorBy:string})=>void;
+    rejectJoinGroup: (msg:{systemMsg:SystemMsg})=>void;
 }
 export interface InterServerEvents {
     disconnect: () => void;
@@ -58,7 +69,8 @@ export interface SocketData {
     groups: any[]
 }
 export type userToServerMsg = {
-    avatar: string, room: string, msg: string, time: Date,id?:number,likes?:number,dislikes?:number,atMembers?: string[],forMsg?:string,type?:string;src?:string
+    avatar: string, room: string, msg: string, time: Date,id?:number,likes?:number,dislikes?:number,atMembers?: string[],forMsg?:string,type?:string;src?:string;fileName?: string;
+    fileSize?: string;
 }
 export type ServerToUserMsg = userToServerMsg & {
     username: string
@@ -66,3 +78,5 @@ export type ServerToUserMsg = userToServerMsg & {
 export type TotalMsg = {
     [key: string]: ServerToUserMsg[];
 }
+
+export type SystemMsg ={msgId:number,fromName:string,toName:string,type:string,done:string,groupName:string,groupId:string,hadRead:boolean}

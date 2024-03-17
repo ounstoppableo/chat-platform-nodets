@@ -13,14 +13,17 @@ import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
 import dayjs from 'dayjs';
 import { validateString } from '@src/util/validateString';
+import formatBytes from '@src/util/byteFormat';
 
 // 设置文件上传的存储路径和文件名
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, path.resolve(__dirname+'/../public/image'));
+    if(file.fieldname==='image') cb(null, path.resolve(__dirname+'/../public/image'));
+    if(file.fieldname==='file') cb(null, path.resolve(__dirname+'/../public/files'));
   },
   filename: function (req, file, cb) {
-    cb(null, uuidv4() + path.extname(file.originalname)); // 保留原始文件的扩展名
+    if(file.fieldname==='image')  cb(null, uuidv4() + path.extname(file.originalname)); // 保留原始文件的扩展名
+    if(file.fieldname==='file') cb(null, uuidv4() + path.extname(file.originalname));
   },
 });
 
@@ -289,7 +292,7 @@ userRouter.get('/groupMsg/:groupId',(req,res:{json:(param:Res<ServerToUserMsg[]>
           });
         }).then((avatar:any)=>{
           const temp = {
-            id:item.id,avatar:avatar.avatar,username:item.username,room:item.groupId,msg:item.text,time:item.time,timestamp:item.timestamp,likes:item.likes,dislikes:item.dislikes,type:item.type,src:item.src,
+            id:item.id,avatar:avatar.avatar,username:item.username,room:item.groupId,msg:item.text,time:item.time,timestamp:item.timestamp,likes:item.likes,dislikes:item.dislikes,type:item.type,src:item.src,fileName:item.fileName,fileSize:item.fileSize,
           };
           resData[index] = temp;
         });
@@ -335,7 +338,7 @@ userRouter.get('/totalMsg/:username?',(req,res:{json:(param:Res<TotalMsg>)=>void
                   }
                   const isShowMsg:string[] = JSON.parse(item.isShowMsg);
                   resData[item.groupId] = data.filter((msg:any)=>!isShowMsg.includes(msg.id+'')).map((item2:any)=>({
-                    id:item2.id,username:item2.username,room:item2.groupId,msg:item2.text,time:item2.time,timestamp:item2.timestamp,likes:item2.likes,dislikes:item2.dislikes,atMembers:JSON.parse(item2.atMembers),forMsg:item2.forMsg,type:item2.type,src:item2.src,
+                    id:item2.id,username:item2.username,room:item2.groupId,msg:item2.text,time:item2.time,timestamp:item2.timestamp,likes:item2.likes,dislikes:item2.dislikes,atMembers:JSON.parse(item2.atMembers),forMsg:item2.forMsg,type:item2.type,src:item2.src,fileName:item2.fileName,fileSize:item2.fileSize,
                   }));
                   const promises2 = resData[item.groupId].map((item3:any,index:number)=>{
                     return new Promise((res3,rej3)=>{
@@ -380,7 +383,7 @@ userRouter.get('/totalMsg/:username?',(req,res:{json:(param:Res<TotalMsg>)=>void
           return rej(err);
         }
         resData['1'] = data.map((item:any)=>({
-          id:item.id,username:item.username,room:item.groupId,msg:item.text,time:item.time,timestamp:item.timestamp,likes:item.likes,dislikes:item.dislikes,atMembers:JSON.parse(item.atMembers),forMsg:item.forMsg,type:item.type,src:item.src,
+          id:item.id,username:item.username,room:item.groupId,msg:item.text,time:item.time,timestamp:item.timestamp,likes:item.likes,dislikes:item.dislikes,atMembers:JSON.parse(item.atMembers),forMsg:item.forMsg,type:item.type,src:item.src,fileName:item.fileName,fileSize:item.fileSize,
         }));
         const promises = resData['1'].map((item2:any,index:number)=>{
           return new Promise((res2,rej2)=>{
@@ -408,57 +411,6 @@ userRouter.get('/totalMsg/:username?',(req,res:{json:(param:Res<TotalMsg>)=>void
   }
 });
 
-
-//添加好友
-userRouter.post('/addFriend',(req,res:{json:(param:Res<any>)=>void})=>{
-  const {username:targetUsername} = req.body;
-  const resData:any =  {} as any;
-  const token = req.headers.authorization;
-  if(token){
-    jwt.verify(token,privateKey,(err:any, decoded:any)=>{
-      if(err) {
-        return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
-      }
-      const {username} = decoded;
-      pool.query('select * from systemMsg where fromName=? and toName=? and type=\'addFriend\' and done=\'padding\' or fromName=? and toName=? and type=\'addFriend\' and done=\'padding\'',[username,targetUsername,targetUsername,username],(err,data)=>{
-        if(err) {
-          console.log(err);
-          return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
-        }
-        if(data.length!==0){
-          resData.type = 0;
-          if(data[0].fromName===username){
-            resData.msg = '正在等待确认！请不要多次请求';
-          }else {
-            resData.msg = '对方已经发送好友请求，请在系统消息内确认！';
-          }
-          return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
-        }
-        pool.query('select * from relationship where username=? and friendName=? or username=? and friendName=?',[username,targetUsername,targetUsername,username],(err,data)=>{
-          if(err) {
-            console.log(err);
-            return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
-          }
-          if(data.length!==0){
-            resData.msg = '你们已经是好友啦!不要重复添加~~';
-            return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
-          }
-          pool.query('INSERT INTO systemMsg (fromName, toName, type) VALUES (?, ?, "addFriend")',[username,targetUsername],(err,data)=>{
-            if(err) {
-              console.log(err);
-              return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
-            }
-            resData.type = 1;
-            resData.msg = '请求发送成功！';
-            return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
-          });
-        });
-      });
-    });
-  }else {
-    return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
-  }
-});
 //获取系统消息
 userRouter.get('/getSystemMsg',(req,res:{json:(param:Res<any>)=>void})=>{
   const resData:any =  {} as any;
@@ -475,92 +427,6 @@ userRouter.get('/getSystemMsg',(req,res:{json:(param:Res<any>)=>void})=>{
           return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
         }
         resData.result = data;
-        return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
-      });
-    });
-  }else {
-    return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
-  }
-});
-//同意添加
-userRouter.get('/acceptAddFriend',(req,res:{json:(param:Res<any>)=>void})=>{
-  const resData:any =  {} as any;
-  const {msgId,fromName,toName} = req.query;
-  const token = req.headers.authorization;
-  if(token){
-    jwt.verify(token,privateKey,(err:any, decoded:any)=>{
-      if(err) {
-        return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
-      }
-      new Promise((resolve,reject)=>{
-        pool.getConnection((err,connection)=>{
-          if(err) {
-            console.log(err);
-            return reject(resCode['serverErr']);
-          }
-          connection.beginTransaction((err)=>{
-            if (err) {
-              connection.release(); // 释放连接回连接池
-              console.error('Error starting transaction:', err);
-              return reject(resCode['serverErr']);
-            }
-            connection.query('insert into relationship set username=?,friendName=?',[fromName,toName],(err,data)=>{
-              if (err) {
-                return connection.rollback(() => {
-                  connection.release(); // 释放连接回连接池
-                  console.error('Error starting transaction:', err);
-                  reject(resCode['serverErr']);
-                });
-              }
-              connection.query('update systemMsg set done=\'success\' where msgId=?',[msgId],(err,data)=>{
-                if(err) {
-                  return connection.rollback(() => {
-                    connection.release(); // 释放连接回连接池
-                    console.error('Error starting transaction:', err);
-                    reject(resCode['serverErr']);
-                  });
-                }
-                connection.commit((commitError) => {
-                  if (commitError) {
-                    return connection.rollback(() => {
-                      connection.release(); // 释放连接回连接池
-                      console.error('Error committing transaction:', commitError);
-                      reject(resCode['serverErr']);
-                    });
-                  }
-                  // 释放连接回连接池
-                  connection.release();
-                  return resolve(1);
-                });
-              });
-            });
-          });
-        });
-      }).then(()=>{
-        return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
-      }).catch((err)=>{
-        return res.json({code:err,data:resData,msg:codeMapMsg[err]});
-      });
-    });
-  }else {
-    return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
-  }
-});
-//拒绝添加
-userRouter.get('/rejectAddFriend/:msgId',(req,res:{json:(param:Res<any>)=>void})=>{
-  const resData:any =  {} as any;
-  const {msgId} = req.params;
-  const token = req.headers.authorization;
-  if(token){
-    jwt.verify(token,privateKey,(err:any, decoded:any)=>{
-      if(err) {
-        return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
-      }
-      pool.query('update systemMsg set done=\'failed\',hadRead=0 where msgId=?',[msgId],(err,data)=>{
-        if(err){
-          console.log(err);
-          return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
-        }
         return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
       });
     });
@@ -735,7 +601,14 @@ userRouter.get('/getGroups',(req,res:{json:(param:Res<any>)=>void})=>{
       });
     });
   }else {
-    return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+    pool.query('select *,groups.username AS authorBy from groups where groupId=\'1\'',(err,data)=>{
+      if(err) {
+        console.log(err);
+        return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
+      }
+      resData.result = data;
+      res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
+    });
   }
 });
 
@@ -764,45 +637,34 @@ userRouter.post('/uploadImage',upload.single('image'),(req:any,res:{json:(param:
   }
 });
 
-//添加群成员
-userRouter.post('/addGroupMember',(req,res:{json:(param:Res<any>)=>void})=>{  
+//文件上传功能
+userRouter.post('/uploadFile',upload.single('file'),(req:any,res:{json:(param:Res<any>)=>void})=>{
   const resData:any =  {result:[]} as any;
-  const {groupId,groupName,targetsUsernames} = req.body;
-  const token = req.headers.authorization;
+  const token = req.cookies.username;
+  const filePath = req.file.path;
+  const fileName = req.file.filename;
   if(token){
     jwt.verify(token,privateKey,(err:any, decoded:any)=>{
       if(err) {
+        fs.unlink(filePath, (err) => {
+          if (err) {
+            console.error('文件删除失败：', err);
+          }
+          console.log('文件删除成功');
+        });
         return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
       }
-      const {username} = decoded;
-      const promises = targetsUsernames.map((toName:string)=>{
-        return new Promise((resolve,reject)=>{
-          pool.query('select * from systemMsg where fromName=? and toName=? and done="padding" and type="addGroupMember" and groupId=?',[username,toName,groupId],(err,data)=>{
-            if(err){
-              console.log(err);
-              return reject(resCode.serverErr);
-            }
-            if(data.length!==0) return resolve(1);
-            pool.query('insert into systemMsg set fromName=?,toName=?,type="addGroupMember",done="padding",groupName=?,groupId=?',[username,toName,groupName,groupId],(err,data)=>{
-              if(err){
-                console.log(err);
-                return reject(resCode.serverErr);
-              }
-              resolve(1);
-            });
-          });
-        });
-      });
-      Promise.all(promises).then(()=>{
-        return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
-      },(err)=>{
-        return res.json({code:err,data:resData,msg:codeMapMsg[err]});
-      });
+      resData.src = '/files/' +fileName;
+      resData.originalname = decodeURIComponent(escape(req.file.originalname));
+      resData.size = formatBytes(req.file.size);
+      res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
     });
   }else {
     return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
   }
 });
+
+
 //同意加群
 userRouter.post('/acceptJoinGroup',(req,res:{json:(param:Res<any>)=>void})=>{
   const resData:any =  {result:[]} as any;
@@ -879,33 +741,6 @@ userRouter.post('/acceptJoinGroup',(req,res:{json:(param:Res<any>)=>void})=>{
     return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
   }
 });
-//拒绝加群
-userRouter.post('/rejectJoinGroup',(req,res:{json:(param:Res<any>)=>void})=>{
-  const resData:any =  {result:[]} as any;
-  const {systemMsg} = req.body;
-  const token = req.headers.authorization;
-  if(token){
-    jwt.verify(token,privateKey,(err:any, decoded:any)=>{
-      if(err) {
-        return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
-      }
-      const {username} = decoded;
-      if(username===systemMsg.toName) {
-        pool.query('update systemMsg set done=\'failed\',hadRead=0 where msgId=?',[systemMsg.msgId],(err,data)=>{
-          if(err) {
-            console.log(err);
-            return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
-          }
-          return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
-        });
-      }else {
-        return res.json({code:resCode.paramsErr,data:resData,msg:codeMapMsg[resCode.paramsErr]});
-      }
-    });
-  }else {
-    return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
-  }
-});
 
 //关闭对话框
 userRouter.post('/closeChat',(req,res:{json:(param:Res<any>)=>void})=>{
@@ -965,6 +800,78 @@ userRouter.get('/delMsg',(req,res:{json:(param:Res<any>)=>void})=>{
           }
           return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
         });
+      });
+    });
+  }else {
+    return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+  }
+});
+
+//添加表情包
+userRouter.post('/addMeme',(req,res:{json:(param:Res<any>)=>void})=>{
+  const resData:any =  {result:[]} as any;
+  const {memeUrl} = req.body;
+  const token = req.headers.authorization;
+  if(token){
+    jwt.verify(token,privateKey,(err:any, decoded:any)=>{
+      if(err) {
+        return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+      }
+      const {username} = decoded;
+      pool.query('insert into meme set username=?,memeUrl=?',[username,memeUrl],(err,data)=>{
+        if(err) {
+          console.log(err);
+          return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
+        }
+        resData.memeUrl = memeUrl;
+        resData.id = data.insertId;
+        return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
+      });
+    });
+  }else {
+    return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+  }
+});
+//获取表情包
+userRouter.get('/getMeme',(req,res:{json:(param:Res<any>)=>void})=>{
+  const resData:any =  {result:[]} as any;
+  const token = req.headers.authorization;
+  if(token){
+    jwt.verify(token,privateKey,(err:any, decoded:any)=>{
+      if(err) {
+        return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+      }
+      const {username} = decoded;
+      pool.query('select * from meme where username=?',[username],(err,data)=>{
+        if(err) {
+          console.log(err);
+          return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
+        }
+        resData.result = data;
+        return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
+      });
+    });
+  }else {
+    return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+  }
+});
+//删除表情包
+userRouter.delete('/delMeme/:id',(req,res:{json:(param:Res<any>)=>void})=>{
+  const resData:any =  {result:[]} as any;
+  const {id} = req.params;
+  const token = req.headers.authorization;
+  if(token){
+    jwt.verify(token,privateKey,(err:any, decoded:any)=>{
+      if(err) {
+        return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+      }
+      const {username} = decoded;
+      pool.query('delete from meme where username=? and id=?',[username,id],(err)=>{
+        if(err) {
+          console.log(err);
+          return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
+        }
+        return res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
       });
     });
   }else {
