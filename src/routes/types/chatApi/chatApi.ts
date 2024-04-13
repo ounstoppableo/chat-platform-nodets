@@ -48,7 +48,7 @@ export interface ClientToServerEvents {
         dislikes: number;
         room: string;
     }) => void;
-    p2pChat:(msg: Omit<userToServerMsg,'room'|'avatar'>&{fromName:string;toName:string,fromAvatar:string,toAvatar:string})=>void;
+    p2pChat:(msg: Omit<userToServerMsg,'avatar'>&{fromName:string;toName:string,fromAvatar:string,toAvatar:string})=>void;
     delGroup:(msg:Group)=>void;
     exitGroup:(msg:Group)=>void;
     editGroupName:(msg:{group:Group,newName:string})=>void;
@@ -70,13 +70,14 @@ export interface SocketData {
 }
 export type userToServerMsg = {
     avatar: string, room: string, msg: string, time: Date,id?:number,likes?:number,dislikes?:number,atMembers?: string[],forMsg?:string,type?:string;src?:string;fileName?: string;
-    fileSize?: string;
+    fileSize?: string,timestamp?:number;region?:string
 }
 export type ServerToUserMsg = userToServerMsg & {
-    username: string
+    username: string,
 }
 export type TotalMsg = {
     [key: string]: ServerToUserMsg[];
 }
+
 
 export type SystemMsg ={msgId:number,fromName:string,toName:string,type:string,done:string,groupName:string,groupId:string,hadRead:boolean}

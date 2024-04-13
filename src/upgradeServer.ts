@@ -19,6 +19,7 @@ const io = new Server<
 >(httpsServer,{
   cors: {
     origin: 'https://localhost:5173',
+    credentials: true,
   },
 });
 
