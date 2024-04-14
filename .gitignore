@@ -4,3 +4,4 @@ dist/
 **/pool.ts
 **/cert
 **/key
+**/redis/connect.ts
