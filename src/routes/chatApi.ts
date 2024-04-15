@@ -225,7 +225,7 @@ redisClient.then(redisClient=>{
           if(!res) throw RedisErr.noFindErr;
           const newMsg = JSON.parse(res);
           newMsg.likes++;
-          redisClient.hSet('groupMsg:'+msg.room,msg.msgId+'',JSON.stringify(msg));
+          redisClient.hSet('groupMsg:'+msg.room,msg.msgId+'',JSON.stringify(newMsg));
           io.to(msg.room).emit('sbLikeMsg',{success:true,likes:msg.likes+1,msgId:msg.msgId,room:msg.room,type:'like'});
         }).catch(err=>{
           if(err!==RedisErr.noFindErr){
@@ -247,7 +247,7 @@ redisClient.then(redisClient=>{
           if(!res) throw RedisErr.noFindErr;
           const newMsg = JSON.parse(res);
           newMsg.likes--;
-          redisClient.hSet('groupMsg:'+msg.room,msg.msgId+'',JSON.stringify(msg));
+          redisClient.hSet('groupMsg:'+msg.room,msg.msgId+'',JSON.stringify(newMsg));
           io.to(msg.room).emit('cancelSbLikeMsg',{success:true,likes:msg.likes-1,msgId:msg.msgId,room:msg.room,type:'cancelLike'});
         }).catch(err=>{
           if(err!==RedisErr.noFindErr){
@@ -270,7 +270,7 @@ redisClient.then(redisClient=>{
           if(!res) throw RedisErr.noFindErr;
           const newMsg = JSON.parse(res);
           newMsg.dislikes++;
-          redisClient.hSet('groupMsg:'+msg.room,msg.msgId+'',JSON.stringify(msg));
+          redisClient.hSet('groupMsg:'+msg.room,msg.msgId+'',JSON.stringify(newMsg));
           io.to(msg.room).emit('sbDislikeMsg',{success:true,dislikes:msg.dislikes+1,msgId:msg.msgId,room:msg.room});
         }).catch(err=>{
           if(err!==RedisErr.noFindErr){
@@ -292,7 +292,7 @@ redisClient.then(redisClient=>{
           if(!res) throw RedisErr.noFindErr;
           const newMsg = JSON.parse(res);
           newMsg.dislikes--;
-          redisClient.hSet('groupMsg:'+msg.room,msg.msgId+'',JSON.stringify(msg));
+          redisClient.hSet('groupMsg:'+msg.room,msg.msgId+'',JSON.stringify(newMsg));
           io.to(msg.room).emit('cancelSbDislikeMsg',{success:true,dislikes:msg.dislikes-1,msgId:msg.msgId,room:msg.room});
         }).catch(err=>{
           if(err!==RedisErr.noFindErr){

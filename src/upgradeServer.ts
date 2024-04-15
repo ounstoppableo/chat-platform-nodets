@@ -18,9 +18,12 @@ const io = new Server<
   SocketData
 >(httpsServer,{
   cors: {
-    origin: 'https://localhost:5173',
+    origin: '*:*',
     credentials: true,
+    methods: ['GET', 'POST'],
   },
+  transports: ['websocket', 'polling'],
+  allowEIO3: true,
 });
 
 export {app,io};
