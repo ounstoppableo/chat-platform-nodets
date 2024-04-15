@@ -36,7 +36,11 @@ redisClient.then(redisClient=>{
     },
   });
 
-  const upload = multer({ storage: storage });
+  const upload = multer({ storage: storage,
+    limits: {
+      fileSize: 10 * 1024 * 1024, // 设置文件大小限制为 5MB
+    }, 
+  });
 
 
 
@@ -689,55 +693,67 @@ redisClient.then(redisClient=>{
   });
 
   //图片上传功能
-  userRouter.post('/uploadImage',upload.single('image'),(req:any,res:{json:(param:Res<any>)=>void})=>{
+  userRouter.post('/uploadImage',(req:any,res:{json:(param:Res<any>)=>void})=>{
     const resData:any =  {result:[]} as any;
-    const token = req.cookies.username;
-    const filePath = req.file.path;
-    const fileName = req.file.filename;
-    if(token){
-      jwt.verify(token,privateKey,(err:any, decoded:any)=>{
-        if(err) {
-          fs.unlink(filePath, (err) => {
-            if (err) {
-              console.error('文件删除失败：', err);
-            }
-            custom.log('文件删除成功');
-          });
-          return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
-        }
-        resData.src = '/image/' +fileName;
-        res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
-      });
-    }else {
-      return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
-    }
+    const _upload = upload.single('image');
+    _upload(req, res as any, function (err) {
+      if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+        return res.json({code:resCode.fileSizeErr,data:resData,msg:codeMapMsg[resCode.fileSizeErr]});
+      }
+      const token = req.cookies.username;
+      const filePath = req.file.path;
+      const fileName = req.file.filename;
+      if(token){
+        jwt.verify(token,privateKey,(err:any, decoded:any)=>{
+          if(err) {
+            fs.unlink(filePath, (err) => {
+              if (err) {
+                console.error('文件删除失败：', err);
+              }
+              custom.log('文件删除成功');
+            });
+            return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+          }
+          resData.src = '/image/' +fileName;
+          res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
+        });
+      }else {
+        return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+      }
+    });
   });
 
   //文件上传功能
-  userRouter.post('/uploadFile',upload.single('file'),(req:any,res:{json:(param:Res<any>)=>void})=>{
+  userRouter.post('/uploadFile',(req:any,res:{json:(param:Res<any>)=>void})=>{
     const resData:any =  {result:[]} as any;
-    const token = req.cookies.username;
-    const filePath = req.file.path;
-    const fileName = req.file.filename;
-    if(token){
-      jwt.verify(token,privateKey,(err:any, decoded:any)=>{
-        if(err) {
-          fs.unlink(filePath, (err) => {
-            if (err) {
-              console.error('文件删除失败：', err);
-            }
-            custom.log('文件删除成功');
-          });
-          return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
-        }
-        resData.src = '/files/' +fileName;
-        resData.originalname = decodeURIComponent(escape(req.file.originalname));
-        resData.size = formatBytes(req.file.size);
-        res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
-      });
-    }else {
-      return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
-    }
+    const _upload = upload.single('file');
+    _upload(req, res as any, function (err) {
+      if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+        return res.json({code:resCode.fileSizeErr,data:resData,msg:codeMapMsg[resCode.fileSizeErr]});
+      }
+      const token = req.cookies.username;
+      const filePath = req.file.path;
+      const fileName = req.file.filename;
+      if(token){
+        jwt.verify(token,privateKey,(err:any, decoded:any)=>{
+          if(err) {
+            fs.unlink(filePath, (err) => {
+              if (err) {
+                console.error('文件删除失败：', err);
+              }
+              custom.log('文件删除成功');
+            });
+            return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+          }
+          resData.src = '/files/' +fileName;
+          resData.originalname = decodeURIComponent(escape(req.file.originalname));
+          resData.size = formatBytes(req.file.size);
+          res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
+        });
+      }else {
+        return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+      }
+    });
   });
 
 

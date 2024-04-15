@@ -28,6 +28,7 @@ export enum resCode {
   paramsErr = 404,
   inexistenceErr = 405,
   limitErr = 201,
+  fileSizeErr = 202,
 }
 
 export enum codeMapMsg {
@@ -37,6 +38,7 @@ export enum codeMapMsg {
   '参数错误' = 404,
   '超过创建限制' = 201,
   '你希望操作的对象不存在或已被删除' = 405,
+  '文件大小超过限制' = 202
 }
 
 export interface Res<T> {
