@@ -28,6 +28,7 @@
     "node": ">=8.10.0"
   },
   "dependencies": {
+    "@types/express-serve-static-core": "^4.19.0",
     "@types/express-ws": "^3.0.4",
     "@types/he": "^1.2.3",
     "@types/jsonwebtoken": "^9.0.5",
