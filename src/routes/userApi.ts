@@ -56,28 +56,28 @@ redisClient.then(redisClient=>{
 
 
   //用户登录逻辑，第一次登录自动注册
-  userRouter.post('/userLogin',async (req,res)=>{
-    const ip = getClientIp(req);
-    if(ip){
-      const findIp = await redisClient.hGet('ip',ip);
-      if(findIp) return res.json({code:resCode.limitErr,data:{},msg:codeMapMsg[resCode.limitErr]});
-      redisClient.hSet('ip',ip,1);
-    }
+  userRouter.post('/userLogin',(req,res)=>{
     const avatarPath = path.resolve(__dirname,'../public/avatar/');
     const {username,password} = req.body;
     if(validateString(username)) return res.json({code:resCode.paramsErr,data:{},msg:codeMapMsg[resCode.paramsErr]});
     new Promise((res,rej)=>{
-      pool.query('select username,password from users where username = ?',[username],(err,data)=>{
+      pool.query('select username,password from users where username = ?',[username],async (err,data)=>{
         if(err) {
           custom.log(err);
-          return rej('服务器错误');
+          return rej(resCode.serverErr);
         }
         if(data.length===0){
+          const ip = getClientIp(req);
+          if(ip){
+            const findIp = await redisClient.hGet('ip',ip);
+            if(findIp) return rej(resCode.limitErr);
+            redisClient.hSet('ip',ip,1);
+          }
           const userInfo:RegisterInfo = {} as RegisterInfo;
           fs.readdir(avatarPath, (err, files) => {
             if (err) {
               console.error('错误的路径:', err);
-              return rej('服务器错误');
+              return rej(resCode.serverErr);
             }
             const randomAvatar = Math.floor((Math.random()*files.length));
             userInfo.avatar = '/avatar/'+ files[randomAvatar];
@@ -87,7 +87,7 @@ redisClient.then(redisClient=>{
             pool.query('select COUNT(*) from users',(err,data)=>{
               if(err) {
                 custom.log(err);
-                return rej('服务器错误');
+                return rej(resCode.serverErr);
               }
               const count = data[0]['COUNT(*)'];
               let str = '';
@@ -99,20 +99,20 @@ redisClient.then(redisClient=>{
               pool.getConnection((err,connection)=>{
                 if(err) {
                   custom.log(err);
-                  return rej('服务器错误');
+                  return rej(resCode.serverErr);
                 }
                 connection.beginTransaction((err)=>{
                   if (err) {
                     connection.release(); // 释放连接回连接池
                     console.error('Error starting transaction:', err);
-                    return rej('服务器错误');
+                    return rej(resCode.serverErr);
                   }
                   connection.query('insert users set avatar=?,username=?,password=?,isOnline=?,uid=?,region=?',[userInfo.avatar,userInfo.username,userInfo.password,userInfo.isOnline,userInfo.uid,userInfo.region],(err,data)=>{
                     if(err) {
                       return connection.rollback(() => {
                         connection.release(); // 释放连接回连接池
                         console.error(err);
-                        rej('服务器错误');
+                        rej(resCode.serverErr);
                       });
                     }
                     connection.query('insert groupRelationship set groupId = 1,username=?', [userInfo.username], (err, data) => {
@@ -120,7 +120,7 @@ redisClient.then(redisClient=>{
                         return connection.rollback(() => {
                           connection.release(); // 释放连接回连接池
                           console.error(err);
-                          rej('服务器错误');
+                          rej(resCode.serverErr);
                         });
                       }
                       connection.commit((commitError) => {
@@ -128,6 +128,7 @@ redisClient.then(redisClient=>{
                           return connection.rollback(() => {
                             connection.release(); // 释放连接回连接池
                             console.error('Error committing transaction:', commitError);
+                            rej(resCode.serverErr);
                           });
                         }
                         redisClient.hSet('userInfo',userInfo.username,JSON.stringify({avatar:userInfo.avatar,username:userInfo.username,isOnline:userInfo.isOnline,uid:userInfo.uid,region:userInfo.region}));
@@ -150,7 +151,7 @@ redisClient.then(redisClient=>{
             const token = jwt.sign({ username, exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24) }, privateKey);
             return res(token);
           }else{
-            return rej('密码错误');
+            return rej(resCode.passwordErr);
           }
         }
       });
@@ -159,7 +160,7 @@ redisClient.then(redisClient=>{
       res.cookie('username', data, { maxAge: Math.floor(Date.now() / 1000) + (60 * 60 * 24), httpOnly: true });
       res.json({code:200,token:data});
     }).catch((err)=>{
-      res.json({code:401,msg:err});
+      res.json({code:err,msg:codeMapMsg[err]});
     });
   });
 
