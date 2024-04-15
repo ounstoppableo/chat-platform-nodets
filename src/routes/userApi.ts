@@ -59,7 +59,7 @@ redisClient.then(redisClient=>{
   userRouter.post('/userLogin',(req,res)=>{
     const avatarPath = path.resolve(__dirname,'../public/avatar/');
     const {username,password} = req.body;
-    if(validateString(username)) return res.json({code:resCode.paramsErr,data:{},msg:codeMapMsg[resCode.paramsErr]});
+    if(!username || validateString(username)) return res.json({code:resCode.paramsErr,data:{},msg:codeMapMsg[resCode.paramsErr]});
     new Promise((res,rej)=>{
       pool.query('select username,password from users where username = ?',[username],async (err,data)=>{
         if(err) {
@@ -548,7 +548,7 @@ redisClient.then(redisClient=>{
     const resData:any =  {result:[]} as any;
     const {groupName,avatar} = req.query;
     const token = req.headers.authorization;
-    if(groupName&&validateString(groupName as string)) return res.json({code:resCode.paramsErr,data:resData,msg:codeMapMsg[resCode.paramsErr]});
+    if(!groupName || groupName&&validateString(groupName as string)) return res.json({code:resCode.paramsErr,data:resData,msg:codeMapMsg[resCode.paramsErr]});
     if(token){
       jwt.verify(token,privateKey,(err:any, decoded:any)=>{
         if(err) {
