@@ -314,18 +314,18 @@ redisClient.then(redisClient=>{
         if(socket.data.username){
           msg.msg = validateInput(msg.msg);
           new Promise((resolve:(data:{
-          groupName: string,
-          groupId: string,
-          username: string,
+          groupName: any,
+          groupId: any,
+          username: any,
           gavatar: any,
           lastMsg: any,
           time: any,
           lastMsgUser: any,
           type: 'p2p',
-          fromAvatar: string,
-          toAvatar: string,
-          toUsername: string,
-          authorBy:string,
+          fromAvatar: any,
+          toAvatar: any,
+          toUsername: any,
+          authorBy:any,
         }
       )=>any,reject)=>{
             //看有没有群，没有就创建一个
