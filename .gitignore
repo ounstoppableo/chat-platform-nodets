@@ -5,4 +5,5 @@ dist/
 **/cert
 **/key
 **/redis/connect.ts
-**/public/**
+**/public/image/
+**/public/files/
