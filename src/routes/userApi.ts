@@ -58,10 +58,15 @@ redisClient.then(redisClient=>{
 
 
   //用户登录逻辑，第一次登录自动注册
-  userRouter.post('/userLogin',(req,res)=>{
+  userRouter.post('/userLogin',async (req,res)=>{
     const avatarPath = path.resolve(__dirname,'../public/avatar/');
     const {username,password} = req.body;
     if(!username || validateString(username)) return res.json({code:resCode.paramsErr,data:{},msg:codeMapMsg[resCode.paramsErr]});
+    const ip = getClientIp(req);
+    const loginCount = await redisClient.get('loginCount:'+ip);
+    if(loginCount && +loginCount>=3){
+      return res.json({code:resCode.limitErr,data:{},msg:'密码错误超过次数！'}); 
+    }
     new Promise((res,rej)=>{
       pool.query('select username,password from users where username = ?',[username],async (err,data)=>{
         if(err) {
@@ -69,7 +74,6 @@ redisClient.then(redisClient=>{
           return rej(resCode.serverErr);
         }
         if(data.length===0){
-          const ip = getClientIp(req);
           if(ip){
             const findIp = await redisClient.hGet('ip',ip);
             if(findIp) return rej(resCode.limitErr);
@@ -148,6 +152,7 @@ redisClient.then(redisClient=>{
           });
         }else {
         //密码正确返回token
+          redisClient.set('loginCount:'+ip,loginCount?+loginCount+1:1,{EX:Math.floor(getTodayFinalSec()-Date.now()/1000)});
           if(data[0].password===password){
             const privateKey = fs.readFileSync(path.resolve(__dirname,'../../key/tokenKey.key'));
             const token = jwt.sign({ username, exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24) }, privateKey);
@@ -162,6 +167,9 @@ redisClient.then(redisClient=>{
       res.cookie('username', data, { maxAge: Math.floor(Date.now() / 1000) + (60 * 60 * 24), httpOnly: true });
       res.json({code:200,token:data});
     }).catch((err)=>{
+      if(err === resCode.passwordErr){
+        return res.json({code:err,msg:`密码错误，还剩${3-(loginCount?+loginCount+1:1)}次机会!`});
+      }
       res.json({code:err,msg:codeMapMsg[err]});
     });
   });
