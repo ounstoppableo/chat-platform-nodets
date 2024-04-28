@@ -7,3 +7,4 @@ dist/
 **/redis/connect.ts
 **/public/image/
 **/public/files/
+**/logs/**

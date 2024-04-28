@@ -12,51 +12,29 @@ const SERVER_START_MSG = ('Express server started on port: ' +
 
 redisClient.then(async redisClient=>{
   const count = await redisClient.get('msg_count');
-  if(count) {
-    GLOBALVAR.MSG_COUNTS = +count;
-    pool.query('select * from groups',async (err,groups)=>{
-      if(err) {
-        return console.log(err);
-      }
-      for(let i=0;i<groups.length;i++){
-        await redisClient.hSet('groupInfo',groups[i].groupId,JSON.stringify(groups[i]));
-      }
-      pool.query('select username,region,avatar,isOnline,uid from users',async (err,users)=>{
-        if(err) {
-          return console.log(err);
-        }
-        for(let i=0;i<users.length;i++){
-          await redisClient.hSet('userInfo',users[i].username,JSON.stringify(users[i]));
-        }
-        httpsServer.listen(EnvVars.Port, () => logger.info(SERVER_START_MSG));
-      });
-    });
+  if(!count) {
+    GLOBALVAR.MSG_COUNTS = 1;
+    await redisClient.set('msg_count',1);
   }else {
-    pool.query('select COUNT(*) from gmessage',((err,data)=>{
-      if(err) {
-        return console.log(err);
-      }
-      GLOBALVAR.MSG_COUNTS = data[0]['COUNT(*)']+1;
-      pool.query('select * from groups', async (err,groups)=>{
-        if(err) {
-          return console.log(err);
-        }
-        for(let i=0;i<groups.length;i++){
-          await redisClient.hSet('groupInfo',groups[i].groupId,JSON.stringify(groups[i]));
-        }
-        pool.query('select username,region,avatar,isOnline,uid from users',async (err,users)=>{
-          if(err) {
-            return console.log(err);
-          }
-          for(let i=0;i<users.length;i++){
-            await redisClient.hSet('userInfo',users[i].username,JSON.stringify(users[i]));
-          }
-          httpsServer.listen(EnvVars.Port, () => logger.info(SERVER_START_MSG));
-        });
-      });
-    }));    
+    GLOBALVAR.MSG_COUNTS = +count;
   }
-
+  const isGroupInfoExist = await redisClient.exists('groupInfo');
+  if(isGroupInfoExist !==1) {
+    redisClient.hSet('groupInfo','1',JSON.stringify({
+      groupName: '全员总群',
+      groupId: '1',
+      username: 'unstoppable840',
+      gavatar: '/avatar/137.jpg',
+      type: 'group',
+      lastMsg: null,
+      time: null,
+      lastMsgUser: null,
+      fromAvatar: null,
+      toAvatar: null,
+      toUsername: null,
+    }));
+  }
+  httpsServer.listen(EnvVars.Port, () => logger.info(SERVER_START_MSG));
 });
 
 

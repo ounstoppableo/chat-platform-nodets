@@ -14,7 +14,8 @@ export interface UserInfo {
     uid:string,
     username: string,
     groups: Group[],
-    isLogin: boolean
+    isLogin: boolean,
+    region: string
 }
 
 export interface Group{

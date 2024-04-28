@@ -18,6 +18,8 @@ import {RedisErr} from './types/err';
 import { commandOptions } from 'redis';
 import custom from '@src/util/log';
 import getClientIp from '@src/util/getIp';
+import getTodayFinalSec from '@src/util/getTodayFinalSec';
+import dirFilesDelete from '@src/util/dirFilesDelete';
 
 
 const EXPIREATIONTIME = 60*60*24*7;
@@ -38,7 +40,7 @@ redisClient.then(redisClient=>{
 
   const upload = multer({ storage: storage,
     limits: {
-      fileSize: 10 * 1024 * 1024, // 设置文件大小限制为 5MB
+      fileSize: 5 * 1024 * 1024, // 设置文件大小限制为 5MB
     }, 
   });
 
@@ -76,7 +78,7 @@ redisClient.then(redisClient=>{
           const userInfo:RegisterInfo = {} as RegisterInfo;
           fs.readdir(avatarPath, (err, files) => {
             if (err) {
-              console.error('错误的路径:', err);
+              custom.log('错误的路径:', err);
               return rej(resCode.serverErr);
             }
             const randomAvatar = Math.floor((Math.random()*files.length));
@@ -104,14 +106,14 @@ redisClient.then(redisClient=>{
                 connection.beginTransaction((err)=>{
                   if (err) {
                     connection.release(); // 释放连接回连接池
-                    console.error('Error starting transaction:', err);
+                    custom.log('Error starting transaction:', err);
                     return rej(resCode.serverErr);
                   }
                   connection.query('insert users set avatar=?,username=?,password=?,isOnline=?,uid=?,region=?',[userInfo.avatar,userInfo.username,userInfo.password,userInfo.isOnline,userInfo.uid,userInfo.region],(err,data)=>{
                     if(err) {
                       return connection.rollback(() => {
                         connection.release(); // 释放连接回连接池
-                        console.error(err);
+                        custom.log(err);
                         rej(resCode.serverErr);
                       });
                     }
@@ -119,7 +121,7 @@ redisClient.then(redisClient=>{
                       if (err) {
                         return connection.rollback(() => {
                           connection.release(); // 释放连接回连接池
-                          console.error(err);
+                          custom.log(err);
                           rej(resCode.serverErr);
                         });
                       }
@@ -127,7 +129,7 @@ redisClient.then(redisClient=>{
                         if (commitError) {
                           return connection.rollback(() => {
                             connection.release(); // 释放连接回连接池
-                            console.error('Error committing transaction:', commitError);
+                            custom.log('Error committing transaction:', commitError);
                             rej(resCode.serverErr);
                           });
                         }
@@ -173,6 +175,7 @@ redisClient.then(redisClient=>{
       resData.isLogin = false;
       resData.uid = '';
       resData.username = '';
+      resData.region = '';
     };
     if(token){
       new Promise((res,rej)=>{
@@ -183,13 +186,14 @@ redisClient.then(redisClient=>{
           }
           const {username} = decoded;
           resData.username = username;
-          pool.query('select avatar,uid from users where users.username = ? ',[username],(err,data)=>{
+          pool.query('select avatar,uid,region from users where users.username = ? ',[username],(err,data)=>{
             if(err) {
               custom.log(err);
               return rej(resCode.serverErr);
             }
             resData.avatar = data[0].avatar;
             resData.uid = data[0].uid;
+            resData.region = data[0].region;
             pool.query('select * from groupRelationship where username = ? and isShow=1',[username],(err,data)=>{
               if(err) {
                 custom.log(err);
@@ -548,13 +552,16 @@ redisClient.then(redisClient=>{
     const resData:any =  {result:[]} as any;
     const {groupName,avatar} = req.query;
     const token = req.headers.authorization;
-    if(!groupName || groupName&&validateString(groupName as string)) return res.json({code:resCode.paramsErr,data:resData,msg:codeMapMsg[resCode.paramsErr]});
+    if(!groupName || !avatar || groupName&&validateString(groupName as string)) return res.json({code:resCode.paramsErr,data:resData,msg:codeMapMsg[resCode.paramsErr]});
     if(token){
       jwt.verify(token,privateKey,(err:any, decoded:any)=>{
         if(err) {
           return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
         }
         const {username} = decoded;
+        const avatarFileName = (avatar as string).split('/')[2];
+        fs.renameSync(path.resolve(__dirname,'../public'+ (avatar as string)),path.resolve( __dirname,'../public/avatar/'+avatarFileName));
+        const gavatar = '/avatar/' + avatarFileName;
         pool.query('select count(*) from groups where username =? and type=\'group\'',[username],(err,data)=>{
           if(err){
             custom.log(err);
@@ -570,15 +577,15 @@ redisClient.then(redisClient=>{
               connection.beginTransaction((err)=>{
                 if (err) {
                   connection.release(); // 释放连接回连接池
-                  console.error('Error starting transaction:', err);
+                  custom.log('Error starting transaction:', err);
                   return reject(resCode['serverErr']);
                 }
                 const groupId= uuidv4();
-                connection.query('insert into groups set groupName=?,gavatar=?,groupId=?,username=?,type=\'group\',time=?',[groupName,avatar,groupId,username,dayjs(new Date()).format('YYYY-MM-DD HH:mm:ss')],(err,data)=>{
+                connection.query('insert into groups set groupName=?,gavatar=?,groupId=?,username=?,type=\'group\',time=?',[groupName,gavatar,groupId,username,dayjs(new Date()).format('YYYY-MM-DD HH:mm:ss')],(err,data)=>{
                   if(err) {
                     return connection.rollback(() => {
                       connection.release(); // 释放连接回连接池
-                      console.error('Error starting transaction:', err);
+                      custom.log('Error starting transaction:', err);
                       reject(resCode['serverErr']);
                     });
                   }
@@ -586,7 +593,7 @@ redisClient.then(redisClient=>{
                     if(err) {
                       return connection.rollback(() => {
                         connection.release(); // 释放连接回连接池
-                        console.error('Error starting transaction:', err);
+                        custom.log('Error starting transaction:', err);
                         reject(resCode['serverErr']);
                       });
                     }
@@ -594,7 +601,7 @@ redisClient.then(redisClient=>{
                       if (commitError) {
                         return connection.rollback(() => {
                           connection.release(); // 释放连接回连接池
-                          console.error('Error committing transaction:', commitError);
+                          custom.log('Error committing transaction:', commitError);
                           reject(resCode['serverErr']);
                         });
                       }
@@ -605,7 +612,7 @@ redisClient.then(redisClient=>{
                       });
                       const groupInfo = {
                         groupName,
-                        gavatar:avatar,
+                        gavatar:gavatar,
                         groupId,
                         username,
                         time:dayjs(new Date()),
@@ -697,64 +704,62 @@ redisClient.then(redisClient=>{
   userRouter.post('/uploadImage',(req:any,res:{json:(param:Res<any>)=>void})=>{
     const resData:any =  {result:[]} as any;
     const _upload = upload.single('image');
-    _upload(req, res as any, function (err) {
-      if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
-        return res.json({code:resCode.fileSizeErr,data:resData,msg:codeMapMsg[resCode.fileSizeErr]});
-      }
-      const token = req.cookies.username;
-      const filePath = req.file.path;
-      const fileName = req.file.filename;
-      if(token){
-        jwt.verify(token,privateKey,(err:any, decoded:any)=>{
-          if(err) {
-            fs.unlink(filePath, (err) => {
-              if (err) {
-                console.error('文件删除失败：', err);
-              }
-              custom.log('文件删除成功');
-            });
-            return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+    const token = req.cookies.username;
+    if(token){
+      jwt.verify(token,privateKey,async (err:any, decoded:any)=>{
+        if(err) {
+          return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+        }
+        const {username} = decoded;
+        const fileUploadCount = await redisClient.get('userFileUploadCount:'+username);
+        if(fileUploadCount && +fileUploadCount>=2) {
+          return res.json({code:resCode.limitErr,data:resData,msg:'一天最多只能上传3个文件o~~'});
+        }
+        _upload(req, res as any, function (err) {
+          if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+            return res.json({code:resCode.fileSizeErr,data:resData,msg:codeMapMsg[resCode.fileSizeErr]});
           }
+          const fileName = req.file.filename;
           resData.src = '/image/' +fileName;
+          redisClient.set('userFileUploadCount:'+username,fileUploadCount?+fileUploadCount+1:0,{EX:Math.floor(getTodayFinalSec()-Date.now()/1000)});
           res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
         });
-      }else {
-        return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
-      }
-    });
+      });
+    }else {
+      return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+    }
   });
 
   //文件上传功能
   userRouter.post('/uploadFile',(req:any,res:{json:(param:Res<any>)=>void})=>{
     const resData:any =  {result:[]} as any;
     const _upload = upload.single('file');
-    _upload(req, res as any, function (err) {
-      if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
-        return res.json({code:resCode.fileSizeErr,data:resData,msg:codeMapMsg[resCode.fileSizeErr]});
-      }
-      const token = req.cookies.username;
-      const filePath = req.file.path;
-      const fileName = req.file.filename;
-      if(token){
-        jwt.verify(token,privateKey,(err:any, decoded:any)=>{
-          if(err) {
-            fs.unlink(filePath, (err) => {
-              if (err) {
-                console.error('文件删除失败：', err);
-              }
-              custom.log('文件删除成功');
-            });
-            return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+    const token = req.cookies.username;
+    if(token){
+      jwt.verify(token,privateKey,async (err:any, decoded:any)=>{
+        if(err) {
+          return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+        }
+        const {username} = decoded;
+        const fileUploadCount = await redisClient.get('userFileUploadCount:'+username);
+        if(fileUploadCount && +fileUploadCount>=2) {
+          return res.json({code:resCode.limitErr,data:resData,msg:'一天最多只能上传3个文件o~~'});
+        }
+        _upload(req, res as any, function (err) {
+          if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+            return res.json({code:resCode.fileSizeErr,data:resData,msg:codeMapMsg[resCode.fileSizeErr]});
           }
+          const fileName = req.file.filename;
           resData.src = '/files/' +fileName;
           resData.originalname = decodeURIComponent(escape(req.file.originalname));
           resData.size = formatBytes(req.file.size);
+          redisClient.set('userFileUploadCount:'+username,fileUploadCount?+fileUploadCount+1:0,{EX:Math.floor(getTodayFinalSec()-Date.now()/1000)});
           res.json({code:resCode.success,data:resData,msg:codeMapMsg[resCode.success]});
         });
-      }else {
-        return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
-      }
-    });
+      });
+    }else {
+      return res.json({code:resCode.tokenErr,data:resData,msg:codeMapMsg[resCode.tokenErr]});
+    }
   });
 
 
@@ -784,14 +789,14 @@ redisClient.then(redisClient=>{
                 connection.beginTransaction((err)=>{
                   if (err) {
                     connection.release(); // 释放连接回连接池
-                    console.error('Error starting transaction:', err);
+                    custom.log('Error starting transaction:', err);
                     return reject(resCode['serverErr']);
                   }
                   connection.query('update systemMsg set done="success" where msgId=?',[systemMsg.msgId],(err,data)=>{
                     if(err) {
                       return connection.rollback(() => {
                         connection.release(); // 释放连接回连接池
-                        console.error('Error starting transaction:', err);
+                        custom.log('Error starting transaction:', err);
                         reject(resCode['serverErr']);
                       });
                     }
@@ -799,7 +804,7 @@ redisClient.then(redisClient=>{
                       if(err) {
                         return connection.rollback(() => {
                           connection.release(); // 释放连接回连接池
-                          console.error('Error starting transaction:', err);
+                          custom.log('Error starting transaction:', err);
                           reject(resCode['serverErr']);
                         });
                       }
@@ -807,7 +812,7 @@ redisClient.then(redisClient=>{
                         if (commitError) {
                           return connection.rollback(() => {
                             connection.release(); // 释放连接回连接池
-                            console.error('Error committing transaction:', commitError);
+                            custom.log('Error committing transaction:', commitError);
                             reject(resCode['serverErr']);
                           });
                         }
@@ -991,6 +996,14 @@ redisClient.then(redisClient=>{
 
 
 });
+
+//守护进程，定时清理文件
+setInterval(()=>{
+  if(new Date().getHours() === 3) {
+    dirFilesDelete(path.resolve(__dirname,'../public/image'),24*60*60*7);
+    dirFilesDelete(path.resolve(__dirname,'../public/files'),24*60*60*7);
+  }
+}, 60*60*1000);
 
 
 
