@@ -729,6 +729,7 @@ redisClient.then(redisClient=>{
           if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
             return res.json({code:resCode.fileSizeErr,data:resData,msg:codeMapMsg[resCode.fileSizeErr]});
           }
+          console.log(req.file);
           const fileName = req.file.filename;
           resData.src = '/image/' +fileName;
           redisClient.set('userFileUploadCount:'+username,fileUploadCount?+fileUploadCount+1:0,{EX:Math.floor(getTodayFinalSec()-Date.now()/1000)});
