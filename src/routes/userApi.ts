@@ -665,7 +665,6 @@ redisClient.then(redisClient=>{
         const {username} = decoded;
         redisClient.hGetAll('groupsForUser:'+username).then((groupRelationsRow:any)=>{
           if(Object.keys(groupRelationsRow).length===0) throw RedisErr.noFindErr;
-          console.log(groupRelationsRow);
           const promises = Object.keys(groupRelationsRow).map((groupId:string)=>{
             return redisClient.hGet('groupInfo',groupId);
           });
