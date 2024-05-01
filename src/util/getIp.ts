@@ -3,7 +3,6 @@ function getClientIp(req:any) {
 	req.ip ||
 	req.connection?.remoteAddress ||
 	req.socket?.remoteAddress ||
-	req.connection?.socket?.remoteAddress ||
-	'';
+	req.connection?.socket?.remoteAddress || req.address;
 }
 export default getClientIp;
