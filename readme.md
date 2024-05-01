@@ -13,7 +13,14 @@
 
 - mysql配置
 
-  找到文件夹下的sqlFile，将文件输入进mysql
+  - 找到文件夹下的sqlFile，将文件输入进mysql
+  - 修改src/mysql下的文件，改为pool.ts，以及内容按自己的环境去修改
+- redis配置
+  - 启动redis到6381端口
+  - 修改src/redis下的文件，改为connect.ts，以及内容按自己的环境修改
+- 密钥配置
+  - 自己生成ssl证书放在根目录的cert文件下，需要自己创建文件夹，证书命名为server.crt和server.key
+  - 生成jwt的密钥，放在根目录的文件夹key下，需要自己创建文件，文件夹名称为
 
 - 启动命令
 
