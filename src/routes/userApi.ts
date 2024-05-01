@@ -152,6 +152,8 @@ redisClient.then(redisClient=>{
           });
         }else {
         //密码正确返回token
+          const userInfo = JSON.parse(await redisClient.hGet('userInfo',username) as string);
+          if(userInfo.isLogin) {return rej(resCode.hadLogin);}
           redisClient.set('loginCount:'+ip,loginCount?+loginCount+1:1,{EX:Math.floor(getTodayFinalSec()-Date.now()/1000)});
           if(data[0].password===password){
             const privateKey = fs.readFileSync(path.resolve(__dirname,'../../key/tokenKey.key'));

@@ -211,7 +211,7 @@ redisClient.then(redisClient=>{
           msg.msg = validateInput(msg.msg);
           msg.atMembers = msg.atMembers?.map(item=>msg.msg.includes('@'+item+' ')?item:'').filter(item=>item!=='');
           const ip = getClientIp(socket.handshake);
-          console.log(ip);
+          custom.log(socket.handshake);
           const region = regionQuery.search(ip as string)?.province.split('省')[0] || '未知';
           redisClient.publish(groupMsgQueneChannelName,JSON.stringify(Object.assign(msg,{username:socket.data.username,region:region})));
         }else {
