@@ -45,8 +45,12 @@ function jwtExControl(req:any, res:any, next:any){
       if(decoded.iat <= startTime) {
         res.clearCookie('username');
         const ip = getClientIp(req);
-        redisClient.then(redisClient=>{
+        redisClient.then(async (redisClient:any)=>{
           redisClient.del('loginCount:'+ip);
+          const userInfo = JSON.parse(await redisClient.hGet('userInfo',decoded.username) as string);
+          userInfo.isLogin = false;
+          userInfo.isOnline = false;
+          redisClient.hSet('userInfo',decoded.username,JSON.stringify(userInfo));
         });
         return res.json({code:resCode.tokenErr,data:{},msg:codeMapMsg[resCode.tokenErr]});
       }
