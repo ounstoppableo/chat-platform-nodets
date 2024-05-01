@@ -665,12 +665,12 @@ redisClient.then(redisClient=>{
         const {username} = decoded;
         redisClient.hGetAll('groupsForUser:'+username).then((groupRelationsRow:any)=>{
           if(Object.keys(groupRelationsRow).length===0) throw RedisErr.noFindErr;
+          console.log(groupRelationsRow);
           const promises = Object.keys(groupRelationsRow).map((groupId:string)=>{
             return redisClient.hGet('groupInfo',groupId);
           });
           return Promise.all(promises).then(groupInfosRow=>{
             groupInfosRow.forEach((item)=>{
-              console.log(item);
               if(!item) throw RedisErr.noFindErr;
             });
             resData.result = groupInfosRow.map((item:any):any=>{
@@ -689,7 +689,6 @@ redisClient.then(redisClient=>{
             custom.log(err);
             return res.json({code:resCode.serverErr,data:resData,msg:codeMapMsg[resCode.serverErr]});
           }
-          console.log(111111111);
           pool.query('select groups.*,groups.username AS authorBy,groupRelationship.isShow from groupRelationship,groups where groupRelationship.username=? and groupRelationship.groupId=groups.groupId',[username],(err,data)=>{
             if(err) {
               custom.log(err);
