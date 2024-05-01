@@ -56,9 +56,7 @@ app.use(express.json());
 app.use(express.urlencoded({extended: true}));
 app.use(cookieParser(EnvVars.CookieProps.Secret));
 
-console.log(process.env.NODE_ENV);
-console.log(process.env.NODE_ENV === 'production');
-if(process.env.NODE_ENV === 'production'){
+if(process.env.NODE_ENV !== 'dev'){
   app.use(jwtExControl);
 }
 
