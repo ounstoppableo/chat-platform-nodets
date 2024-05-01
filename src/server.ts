@@ -23,11 +23,42 @@ import HttpStatusCodes from '@src/constants/HttpStatusCodes';
 import { NodeEnvs } from '@src/constants/misc';
 import { RouteError } from '@src/other/classes';
 import userRouter from '@src/routes/userApi';
+import jwt from 'jsonwebtoken';
+import fs from 'fs';
+import { codeMapMsg, resCode } from './routes/types/types';
+
+
+const privateKey = fs.readFileSync(path.resolve(__dirname,'../key/tokenKey.key'));
+const startTime = Math.floor(Date.now()/1000);
+
+//jwt中间件
+function jwtExControl(req:any, res:any, next:any){
+  const token = req.headers.authorization||req.cookies.username;
+  if(token){
+    jwt.verify(token,privateKey,(err:any,decoded:any)=>{
+      if(err) {
+        res.clearCookie('username');
+        return res.json({code:resCode.tokenErr,data:{},msg:codeMapMsg[resCode.tokenErr]});
+      }
+      if(decoded.iat <= startTime) {
+        res.clearCookie('username');
+        return res.json({code:resCode.tokenErr,data:{},msg:codeMapMsg[resCode.tokenErr]});
+      }
+      next();
+    });
+  }else {
+    next();
+  }
+}
 
 // Basic middleware
 app.use(express.json());
 app.use(express.urlencoded({extended: true}));
 app.use(cookieParser(EnvVars.CookieProps.Secret));
+
+if(process.env.NODE_ENV !== 'development'){
+  app.use(jwtExControl);
+}
 
 // Show routes called in console during development
 if (EnvVars.NodeEnv === NodeEnvs.Dev.valueOf()) {
