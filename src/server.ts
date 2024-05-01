@@ -26,6 +26,8 @@ import userRouter from '@src/routes/userApi';
 import jwt from 'jsonwebtoken';
 import fs from 'fs';
 import { codeMapMsg, resCode } from './routes/types/types';
+import { redisClient } from '@src/redis/connect';
+import getClientIp from './util/getIp';
 
 
 const privateKey = fs.readFileSync(path.resolve(__dirname,'../key/tokenKey.key'));
@@ -42,6 +44,10 @@ function jwtExControl(req:any, res:any, next:any){
       }
       if(decoded.iat <= startTime) {
         res.clearCookie('username');
+        const ip = getClientIp(req);
+        redisClient.then(redisClient=>{
+          redisClient.del('loginCount:'+ip);
+        });
         return res.json({code:resCode.tokenErr,data:{},msg:codeMapMsg[resCode.tokenErr]});
       }
       next();
