@@ -26,7 +26,7 @@ import userRouter from '@src/routes/userApi';
 import jwt from 'jsonwebtoken';
 import fs from 'fs';
 import { codeMapMsg, resCode } from './routes/types/types';
-import { redisClient } from '@src/redis/connect';
+import { redisClient } from '@src/redis-client/connect';
 import getClientIp from './util/getIp';
 
 

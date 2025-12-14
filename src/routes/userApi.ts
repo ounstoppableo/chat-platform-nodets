@@ -1,6 +1,6 @@
 import jetValidator from 'jet-validator';
 import { Router } from 'express';
-import pool from '@src/mysql/pool';
+import pool from '@src/mysql-client/pool';
 import path, { resolve } from 'path';
 import fs from 'fs';
 import jwt from 'jsonwebtoken';
@@ -13,7 +13,7 @@ import { v4 as uuidv4 } from 'uuid';
 import dayjs from 'dayjs';
 import { validateString } from '@src/util/validateString';
 import formatBytes from '@src/util/byteFormat';
-import { redisClient } from '@src/redis/connect';
+import { redisClient } from '@src/redis-client/connect';
 import {RedisErr} from './types/err';
 import { commandOptions } from 'redis';
 import custom from '@src/util/log';

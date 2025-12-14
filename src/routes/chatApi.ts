@@ -1,9 +1,9 @@
 import { io } from '@src/upgradeServer';
-import {redisClient} from '@src/redis/connect';
+import {redisClient} from '@src/redis-client/connect';
 import path, { resolve } from 'path';
 import jwt from 'jsonwebtoken';
 import fs from 'fs';
-import pool from '@src/mysql/pool';
+import pool from '@src/mysql-client/pool';
 import dayjs from 'dayjs';
 import { validateInput } from '@src/util/validateInput';
 import { v4 as uuidv4 } from 'uuid';

@@ -4,7 +4,7 @@ dist/
 **/pool.ts
 **/cert
 **/key
-**/redis/connect.ts
+**/redis-client/connect.ts
 **/public/image/
 **/public/files/
 **/logs/**
