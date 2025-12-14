@@ -7,7 +7,7 @@
     "lint:tests": "npx eslint --ext .ts spec/",
     "start": "node -r module-alias/register ./dist --env=production",
     "dev": "set NODE_ENV=dev&& ts-node --files -r tsconfig-paths/register ./src",
-    "prod":"set NODE_ENV=production&& nodemon",
+    "prod": "set NODE_ENV=production&& nodemon",
     "test": "nodemon --config ./spec/nodemon.json",
     "test:no-reloading": "npx ts-node --files -r tsconfig-paths/register ./spec"
   },
@@ -85,6 +85,7 @@
     "nodemon": "^3.0.2",
     "supertest": "^6.3.3",
     "ts-node": "^10.9.2",
+    "tsc-alias": "^1.8.16",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.3.3"
   }
